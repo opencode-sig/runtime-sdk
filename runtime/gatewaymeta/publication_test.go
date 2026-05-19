@@ -24,7 +24,7 @@ func TestNewGatewayPublication(t *testing.T) {
 	if routes[0].ID != "user.get" {
 		t.Fatalf("route id = %q", routes[0].ID)
 	}
-	if routes[0].HTTP.Path != "/user/v1/users/{id}" {
+	if routes[0].HTTP.Path != "/v1/users/{id}" {
 		t.Fatalf("http path = %q", routes[0].HTTP.Path)
 	}
 	if routes[0].GRPC.DescriptorID != "api.user.v1" {
@@ -48,24 +48,22 @@ func TestNewGatewayPublicationRejectsUnknownMethod(t *testing.T) {
 	}
 }
 
-func TestServiceRoutePath(t *testing.T) {
+func TestGatewayRoutePath(t *testing.T) {
 	tests := []struct {
-		name    string
-		service string
-		path    string
-		want    string
+		name string
+		path string
+		want string
 	}{
-		{name: "local absolute path", service: "user", path: "/v1/users/{id}", want: "/user/v1/users/{id}"},
-		{name: "local relative path", service: "user", path: "v1/users/{id}", want: "/user/v1/users/{id}"},
-		{name: "already prefixed", service: "user", path: "/user/v1/users/{id}", want: "/user/v1/users/{id}"},
-		{name: "extra slashes", service: "/payment/", path: "/v1/payments/", want: "/payment/v1/payments"},
-		{name: "root path", service: "health", path: "/", want: "/health"},
+		{name: "absolute path", path: "/v1/users/{id}", want: "/v1/users/{id}"},
+		{name: "relative path", path: "v1/users/{id}", want: "/v1/users/{id}"},
+		{name: "extra slashes", path: "/v1/payments/", want: "/v1/payments"},
+		{name: "root path", path: "/", want: "/"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := serviceRoutePath(tt.service, tt.path); got != tt.want {
-				t.Fatalf("service route path = %q, want %q", got, tt.want)
+			if got := gatewayRoutePath(tt.path); got != tt.want {
+				t.Fatalf("gateway route path = %q, want %q", got, tt.want)
 			}
 		})
 	}

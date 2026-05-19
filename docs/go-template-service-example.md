@@ -248,13 +248,14 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 
 This publishes:
 
-- HTTP `GET /payment/v1/payments/{id}` to gRPC `PaymentService/GetPayment`
-- HTTP `POST /payment/v1/payments` to gRPC `PaymentService/CreatePayment`
+- HTTP `GET /v1/payments/{id}` to gRPC `PaymentService/GetPayment`
+- HTTP `POST /v1/payments` to gRPC `PaymentService/CreatePayment`
 - the protobuf descriptor set required by dynamic Gateway invocation
 
-Service code declares service-local paths such as `/v1/payments/{id}`. The SDK
-adds the standard public `/{service}` prefix during Gateway metadata publication,
-so internal and external services use the same route convention.
+Service code declares the explicit public Gateway path such as
+`/v1/payments/{id}`. The SDK normalizes slashes but does not add a service-name
+prefix. If an application wants a prefix such as `/payment`, declare it
+explicitly in the route path.
 
 ## Service Spec
 

@@ -76,10 +76,10 @@ func loadManagedConfig(ctx context.Context, bootstrap servicekit.Config) (servic
 userClient, err := servicekit.Client(ctx.Clients, reqCtx, "user", userv1.NewUserServiceClient)
 ```
 
-Gateway route spec 使用服务内业务路径，例如 `/v1/payments/{id}`。发布元数据时，
-`runtime/gatewaymeta` 会统一暴露为 `/{service}/...`，例如
-`/payment/v1/payments/{id}`。Gateway 仍然应该根据发布后的
-`RouteMeta.GRPC.Service` 转发，而不是从 URL 前缀解析服务名。
+Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`。
+`runtime/gatewaymeta` 只规范化斜杠，不会自动添加服务名前缀。Gateway
+应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
+转发，而不是从 URL 前缀解析服务名。
 
 ## Rebuild 语义
 

@@ -122,7 +122,7 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 			ID:         routeID,
 			Enabled:    !routeSpec.Disabled,
 			HTTPMethod: routeSpec.HTTPMethod,
-			HTTPPath:   serviceRoutePath(service, routeSpec.HTTPPath),
+			HTTPPath:   gatewayRoutePath(routeSpec.HTTPPath),
 			Service:    service,
 			File:       spec.File,
 			Method:     routeSpec.Method,
@@ -138,23 +138,13 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 	return routes, map[string][]byte{descriptorID: descriptorSet}, nil
 }
 
-// serviceRoutePath normalizes a service-local HTTP path into the public gateway path.
+// gatewayRoutePath normalizes an explicit public Gateway path.
 //
-// Services declare local business paths such as /v1/users/{id}. The gateway
-// exposes them under /{service}/... so internal and external services share one
-// stable route convention. Already-prefixed paths are kept stable to avoid
-// accidental double prefixes during gradual migration.
-func serviceRoutePath(service string, routePath string) string {
-	service = strings.Trim(strings.TrimSpace(service), "/")
+// Services must declare the full public path they want published. The runtime
+// does not add a service-name prefix implicitly.
+func gatewayRoutePath(routePath string) string {
 	path := "/" + strings.Trim(strings.TrimSpace(routePath), "/")
-	if path == "/" {
-		return "/" + service
-	}
-	prefix := "/" + service
-	if path == prefix || strings.HasPrefix(path, prefix+"/") {
-		return path
-	}
-	return prefix + path
+	return path
 }
 
 // defaultGatewayRouteID builds a stable route id from service name and RPC method.

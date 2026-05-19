@@ -9,7 +9,7 @@
 - `runtime/config`：配置存储契约、本地文件 provider、etcd provider。
 - `runtime/control`：rebuild/restart 控制命令契约和命令存储。
 - `runtime/discovery`、`runtime/registry`、`runtime/grpcclient`：服务发现、注册和 gRPC client 连接管理。
-- `runtime/gatewaymeta`：Gateway 路由元数据和 protobuf descriptor 发布辅助能力，包括标准 `/{service}` 对外路由前缀发布规则。
+- `runtime/gatewaymeta`：Gateway 路由元数据和 protobuf descriptor 发布辅助能力。
 - `observability`：通用健康检查、指标和 tracing 辅助能力。
 - `infra`：常见基础设施 client 的可选构造器和配置对象。
 - `logger`、`rpcerror`、`apperror`：独立的横切能力。
@@ -24,8 +24,9 @@
 - `runtime/*` 包不能反向依赖顶层 `servicekit` 门面。
 - core runtime 包不能依赖可选的 MySQL、Redis、Kafka 包。
 - `logger`、`rpcerror`、`apperror` 不能依赖 runtime 或 infra 包。
-- 服务声明 Gateway 路由时只写服务内业务路径。`runtime/gatewaymeta`
-  负责统一发布 `/{service}` 对外前缀，Gateway 不需要服务专属路由规则。
+- 服务声明 Gateway 路由时必须写显式公网网关路径。`runtime/gatewaymeta`
+  只规范化斜杠，不会自动添加服务名前缀。Gateway 应根据元数据转发，
+  不应从 URL 前缀反推服务名。
 
 发布前执行：
 

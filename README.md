@@ -86,10 +86,11 @@ Managed services can also resolve other services by name through
 userClient, err := servicekit.Client(ctx.Clients, reqCtx, "user", userv1.NewUserServiceClient)
 ```
 
-Gateway route specs use service-local paths, for example `/v1/payments/{id}`.
-During publication, `runtime/gatewaymeta` exposes them as `/{service}/...`, such
-as `/payment/v1/payments/{id}`. Gateways should still forward by the published
-`RouteMeta.GRPC.Service`, not by parsing the URL prefix.
+Gateway route specs use explicit public Gateway paths, for example
+`/v1/payments/{id}`. `runtime/gatewaymeta` normalizes slashes but does not add a
+service-name prefix. Gateways should forward by the published
+`RouteMeta.GRPC.Service` and `RouteMeta.GRPC.FullMethod`, not by parsing URL
+prefixes.
 
 ## Rebuild Semantics
 

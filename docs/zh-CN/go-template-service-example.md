@@ -202,7 +202,7 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 ```
 
 服务只声明 HTTP method/path、RPC method 和参数绑定关系。`runtime-sdk` 会从 protobuf descriptor 推导 full method、request type、response type 和 descriptor id。
-服务代码声明的是服务内业务路径，例如 `/v1/payments/{id}`；发布到 Gateway 后会统一变成对外路径 `/payment/v1/payments/{id}`。
+服务代码声明的是显式公网网关路径，例如 `/v1/payments/{id}`；SDK 只规范化斜杠，不会自动添加服务名前缀。如果应用需要 `/payment` 这类前缀，应在 route path 中显式声明。
 
 ## 服务模块
 
