@@ -1,0 +1,19 @@
+.DS_Store
+
+# Go build artifacts
+/bin/
+/dist/
+/build/
+*.test
+*.out
+coverage.out
+
+# Local editor and environment files
+.vscode/
+.idea/
+.env
+.env.*
+
+# Temporary files
+/tmp/
+*.log
