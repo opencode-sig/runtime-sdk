@@ -28,6 +28,14 @@
 - 服务声明 Gateway 路由时必须写显式公网网关路径。`runtime/gatewaymeta`
   只规范化斜杠，不会自动添加服务名前缀。Gateway 应根据元数据转发，
   不应从 URL 前缀反推服务名。
+- Gateway 响应行为默认由应用网关包标准 JSON envelope。浏览器可直接渲染
+  或文件型 raw 输出属于 Gateway 路由契约，必须通过
+  `runtime/gatewaymeta.RawResponse` 显式声明。Gateway 实现应基于 protobuf
+  descriptor 静态编译 `response.raw` 元数据，不能根据方法名、URL path、
+  content-type 字段或普通 `body` 字段猜测 raw 输出。
+- Raw response 元数据只负责声明契约。`runtime/gatewaymeta` 可以描述
+  `content_type`、`body`、`status`、`headers`，但不能依赖 Gin、具体 HTTP
+  handler 或应用 response envelope 包。
 
 发布前执行：
 

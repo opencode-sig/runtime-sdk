@@ -7,12 +7,13 @@ import (
 )
 
 type RouteMeta struct {
-	ID      string   `json:"id"`
-	Enabled bool     `json:"enabled"`
-	HTTP    HTTPMeta `json:"http"`
-	GRPC    GRPCMeta `json:"grpc"`
-	Binding Binding  `json:"binding"`
-	Timeout string   `json:"timeout,omitempty"`
+	ID       string          `json:"id"`
+	Enabled  bool            `json:"enabled"`
+	HTTP     HTTPMeta        `json:"http"`
+	GRPC     GRPCMeta        `json:"grpc"`
+	Binding  Binding         `json:"binding"`
+	Timeout  string          `json:"timeout,omitempty"`
+	Response *ResponsePolicy `json:"response,omitempty"`
 }
 
 type HTTPMeta struct {
@@ -32,6 +33,29 @@ type Binding struct {
 	Path  map[string]string `json:"path,omitempty"`
 	Query map[string]string `json:"query,omitempty"`
 	Body  string            `json:"body,omitempty"`
+}
+
+type ResponsePolicy struct {
+	Raw *RawResponsePolicy `json:"raw,omitempty"`
+}
+
+type RawResponsePolicy struct {
+	ContentType string `json:"content_type,omitempty"`
+	Body        string `json:"body,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Headers     string `json:"headers,omitempty"`
+}
+
+func cloneResponsePolicy(policy *ResponsePolicy) *ResponsePolicy {
+	if policy == nil {
+		return nil
+	}
+	clone := *policy
+	if policy.Raw != nil {
+		raw := *policy.Raw
+		clone.Raw = &raw
+	}
+	return &clone
 }
 
 // Validate checks whether a Gateway dynamic route has complete HTTP and gRPC mapping metadata.
@@ -67,6 +91,11 @@ func (r RouteMeta) Validate() error {
 	if r.Timeout != "" {
 		if _, err := r.TimeoutDuration(0); err != nil {
 			return err
+		}
+	}
+	if r.Response != nil && r.Response.Raw != nil {
+		if strings.TrimSpace(r.Response.Raw.Body) == "" {
+			return fmt.Errorf("route %s raw response body is required", r.ID)
 		}
 	}
 	return nil

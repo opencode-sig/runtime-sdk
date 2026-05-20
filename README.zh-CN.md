@@ -92,6 +92,27 @@ Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`�
 应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
 转发，而不是从 URL 前缀解析服务名。
 
+普通 Gateway 路由默认由应用网关包标准 JSON envelope。需要浏览器直接渲染
+或文件型输出的路由必须显式声明 raw response：
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+    Body("*").
+    RawResponse("text/html; charset=utf-8")
+```
+
+`RawResponse` 会发布 `response.raw` 元数据。Gateway 实现应在加载路由时
+用 protobuf response descriptor 静态编译该元数据，然后把配置的 `body`
+字段直接写入 HTTP response。可选的 `status` 和 `headers` 字段可以通过
+`RawStatus`、`RawHeaders` 声明。Gateway 不应根据方法名或普通 response
+字段名猜测 raw 输出。
+
+受管理 gRPC component 会在服务 admin `/metrics` 暴露 Prometheus 指标。
+除兼容旧看板的 `runtime_grpc_*` 指标外，SDK 默认记录常用 gRPC server
+指标，包括 `grpc_server_started_total`、`grpc_server_handled_total`、
+`grpc_server_handling_seconds`、in-flight gauge、panic 计数、deadline
+计数和 protobuf 消息大小直方图。
+
 ## Rebuild 语义
 
 `servicekit` rebuild 的流程是：从最新配置创建新的 DataPlane，停止旧 generation，再启动新的 generation。这个设计让单进程、同端口服务的运行时核心保持简单和可预测；它不是同进程零停机切换。

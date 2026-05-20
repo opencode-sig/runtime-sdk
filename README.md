@@ -103,6 +103,29 @@ service-name prefix. Gateways should forward by the published
 `RouteMeta.GRPC.Service` and `RouteMeta.GRPC.FullMethod`, not by parsing URL
 prefixes.
 
+Ordinary Gateway routes use the application's standard JSON response envelope.
+Routes that need browser-renderable or file-like output must opt in explicitly:
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+    Body("*").
+    RawResponse("text/html; charset=utf-8")
+```
+
+`RawResponse` publishes `response.raw` metadata. Gateway implementations should
+compile that metadata against the protobuf response descriptor and then write
+the configured `body` field directly to the HTTP response. Optional `status`
+and `headers` protobuf fields can be exposed through `RawStatus` and
+`RawHeaders`. Gateways must not infer raw output from method names or from
+ordinary response fields.
+
+Managed gRPC components expose Prometheus metrics on the service admin
+`/metrics` endpoint. In addition to legacy `runtime_grpc_*` metrics, the SDK
+records common gRPC server metrics such as `grpc_server_started_total`,
+`grpc_server_handled_total`, `grpc_server_handling_seconds`, in-flight request
+gauges, panic counters, deadline counters, and protobuf message-size
+histograms.
+
 ## Rebuild Semantics
 
 `servicekit` rebuilds a service by creating a new DataPlane from the latest

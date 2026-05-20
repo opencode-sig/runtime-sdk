@@ -17,6 +17,7 @@ type DescriptorRouteSpec struct {
 	Method     string
 	Binding    Binding
 	Timeout    string
+	Response   *ResponsePolicy
 }
 
 // NewDescriptorRoute completes Gateway RouteMeta gRPC fields from protobuf descriptors.
@@ -56,8 +57,9 @@ func NewDescriptorRoute(spec DescriptorRouteSpec) (RouteMeta, error) {
 			ResponseType: string(method.Output().FullName()),
 			DescriptorID: descriptorID,
 		},
-		Binding: spec.Binding,
-		Timeout: spec.Timeout,
+		Binding:  spec.Binding,
+		Timeout:  spec.Timeout,
+		Response: cloneResponsePolicy(spec.Response),
 	}
 	if err := route.Validate(); err != nil {
 		return RouteMeta{}, err

@@ -1,6 +1,7 @@
 package gatewaymeta
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -33,6 +34,59 @@ func TestNewGatewayPublication(t *testing.T) {
 	if len(descriptors["api.user.v1"]) == 0 {
 		t.Fatal("descriptor set is empty")
 	}
+	if routes[0].Response != nil {
+		t.Fatalf("default route response policy = %#v, want nil", routes[0].Response)
+	}
+	data, err := json.Marshal(routes[0])
+	if err != nil {
+		t.Fatalf("marshal route: %v", err)
+	}
+	if json.Valid(data) && string(data) != "" && containsJSONField(data, "response") {
+		t.Fatalf("default route should omit response field: %s", string(data))
+	}
+}
+
+func TestNewGatewayPublicationRawResponse(t *testing.T) {
+	routes, _, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "user",
+		File:    testUserFile(t),
+		Routes: []GatewayRouteSpec{
+			GET("GetUser", "/v1/users/{id}").
+				Path("id", "id").
+				RawResponse("text/html; charset=utf-8").
+				RawBody("html").
+				RawStatus("http_status").
+				RawHeaders("response_headers"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	raw := routes[0].Response.Raw
+	if raw == nil {
+		t.Fatal("raw response policy is required")
+	}
+	if raw.ContentType != "text/html; charset=utf-8" {
+		t.Fatalf("content type = %q", raw.ContentType)
+	}
+	if raw.Body != "html" {
+		t.Fatalf("body = %q", raw.Body)
+	}
+	if raw.Status != "http_status" {
+		t.Fatalf("status = %q", raw.Status)
+	}
+	if raw.Headers != "response_headers" {
+		t.Fatalf("headers = %q", raw.Headers)
+	}
+}
+
+func containsJSONField(data []byte, field string) bool {
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil {
+		return false
+	}
+	_, ok := object[field]
+	return ok
 }
 
 func TestNewGatewayPublicationRejectsUnknownMethod(t *testing.T) {

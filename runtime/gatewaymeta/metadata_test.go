@@ -19,6 +19,14 @@ func TestRouteMetaValidateRejectsMissingDescriptor(t *testing.T) {
 	}
 }
 
+func TestRouteMetaValidateRejectsRawResponseWithoutBody(t *testing.T) {
+	route := testRoute("api.test.v1")
+	route.Response = &ResponsePolicy{Raw: &RawResponsePolicy{ContentType: "text/html"}}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
 func testRoute(descriptorID string) RouteMeta {
 	return RouteMeta{
 		ID:      "test.get",

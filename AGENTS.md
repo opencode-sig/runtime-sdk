@@ -78,6 +78,8 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - `GatewayRouteSpec.Query(param, field)`。
 - `GatewayRouteSpec.Body(value)`。
 - `GatewayRouteSpec.Timeout(value)`。
+- `GatewayRouteSpec.RawResponse(contentType)`：显式声明该路由返回原始 HTTP 内容，不走 JSON envelope。
+- `GatewayRouteSpec.RawBody(field)` / `RawStatus(field)` / `RawHeaders(field)`：按需覆盖 raw response 使用的 protobuf 字段名。
 - `GatewayDescriptorSet(files...)`。
 - `DescriptorID(file)`。
 
@@ -89,6 +91,9 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - 如果应用需要 `/payment`、`/admin` 等业务前缀，应在 route path 中显式声明。
 - Gateway 应根据 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod` 转发，不应从 URL 前缀反推服务名。
 - descriptor id 默认使用 proto package，要求 proto package 稳定。
+- 默认响应策略是不生成 `response` 元数据，并由 Gateway 包标准 JSON envelope。
+- 需要 HTML、CSV、PDF、纯文本等浏览器或文件型输出时，服务必须显式调用 `RawResponse(contentType)`，由 Gateway 按 `response.raw` 直接写 HTTP body。
+- Gateway 不应根据 response message 中的字段名、方法名或 content-type 猜测 raw 输出。
 
 `NewGatewayPublication` 会从 protobuf descriptor 推导：
 
@@ -194,10 +199,28 @@ rebuild 语义是 stop-start replacement：
 观测能力：
 
 - `observability/health`：健康检查聚合器和标准 JSON `/healthz` handler。
-- `observability/metrics`：独立 Prometheus registry、HTTP/gRPC request count 和 latency、custom collector 注册。
+- `observability/metrics`：独立 Prometheus registry、HTTP/gRPC request count 和 latency、默认 gRPC server 指标、custom collector 注册。
 - `observability/tracing`：noop tracer provider 初始化、gRPC client/server trace context propagation interceptors。
 
 SDK 默认保持 tracing 边界和上下文传播可用，但不强制外部 collector。需要真实 exporter 时，由上层应用或运行时替换 OpenTelemetry provider。
+
+默认 gRPC server 指标由 SDK 的 gRPC component 统一注入，业务服务不需要重复实现。指标包括：
+
+- `runtime_service_info{service}`：服务指标注册信息，值恒为 1。
+- `grpc_server_started_total{service,grpc_type,grpc_service,grpc_method}`：gRPC 请求开始总数。
+- `grpc_server_handled_total{service,grpc_type,grpc_service,grpc_method,grpc_code}`：gRPC 请求完成总数。
+- `grpc_server_handling_seconds{service,grpc_type,grpc_service,grpc_method,grpc_code}`：gRPC 请求处理耗时。
+- `grpc_server_msg_received_total{service,grpc_type,grpc_service,grpc_method}`：gRPC 请求消息接收总数。
+- `grpc_server_msg_sent_total{service,grpc_type,grpc_service,grpc_method}`：gRPC 响应消息发送总数。
+- `grpc_server_requests_total{service,method,code}`：gRPC 请求总数。
+- `grpc_server_request_duration_seconds{service,method,code}`：gRPC 请求耗时。
+- `grpc_server_inflight_requests{service,method}`：当前正在处理的 gRPC 请求数。
+- `grpc_server_panics_total{service,method}`：handler panic 次数。
+- `grpc_server_deadline_exceeded_total{service,method}`：DeadlineExceeded 次数。
+- `grpc_server_request_message_bytes{service,method}`：请求 protobuf 消息大小。
+- `grpc_server_response_message_bytes{service,method,code}`：响应 protobuf 消息大小。
+
+为兼容旧监控面板，`runtime_grpc_requests_total` 和 `runtime_grpc_request_duration_seconds` 暂时保留；新看板应优先使用 `grpc_server_started_total`、`grpc_server_handled_total`、`grpc_server_handling_seconds` 这一组通用指标。
 
 ### `logger`
 

@@ -40,6 +40,15 @@ in a release note.
 - Services declare explicit public Gateway paths. `runtime/gatewaymeta`
   normalizes slashes but does not add service-name prefixes. Gateways route by
   metadata, not by inferring a service from URL prefixes.
+- Gateway response behavior defaults to the application JSON envelope.
+  Browser-renderable or file-like raw output is part of the Gateway route
+  contract and must be declared through `runtime/gatewaymeta.RawResponse`.
+  Gateway implementations should compile `response.raw` metadata from protobuf
+  descriptors and must not infer raw output from method names, URL paths,
+  content-type fields, or generic `body` fields.
+- Raw response metadata is declarative only. `runtime/gatewaymeta` may describe
+  `content_type`, `body`, `status`, and `headers`, but it must not depend on
+  Gin, concrete HTTP handlers, or application response-envelope packages.
 
 Run `make verify` before release. It executes formatting checks, tests,
 `go vet`, and boundary checks.

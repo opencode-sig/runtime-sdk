@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added explicit Gateway raw response metadata for browser-renderable and
+  file-like outputs through `GatewayRouteSpec.RawResponse`, `RawBody`,
+  `RawStatus`, and `RawHeaders`.
+- Added default gRPC server metrics in `observability/metrics`, including
+  started/handled/latency counters, in-flight gauges, panic/deadline counters,
+  and protobuf message-size histograms.
 - Added `servicekit.Configs` for read-oriented config-center access during
   service initialization, including consistent logical keys for file and etcd
   config sources.

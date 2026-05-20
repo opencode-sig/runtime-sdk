@@ -22,6 +22,7 @@ type GatewayRouteSpec struct {
 	HTTPPath      string
 	Binding       Binding
 	TimeoutString string
+	Response      *ResponsePolicy
 	Disabled      bool
 }
 
@@ -84,6 +85,56 @@ func (r GatewayRouteSpec) Timeout(value string) GatewayRouteSpec {
 	return r
 }
 
+// RawResponse marks this route as a raw HTTP response route.
+//
+// Raw routes bypass the Gateway JSON envelope and write the configured body
+// field directly to the HTTP response. Ordinary routes should not set this and
+// therefore keep the default envelope behavior without extra metadata.
+func (r GatewayRouteSpec) RawResponse(contentType string) GatewayRouteSpec {
+	r.Response = &ResponsePolicy{Raw: defaultRawResponsePolicy(contentType)}
+	return r
+}
+
+// RawBody overrides the protobuf response field used as the raw HTTP body.
+func (r GatewayRouteSpec) RawBody(field string) GatewayRouteSpec {
+	r = r.ensureRawResponse()
+	r.Response.Raw.Body = strings.TrimSpace(field)
+	return r
+}
+
+// RawStatus overrides the optional protobuf response field used as HTTP status.
+func (r GatewayRouteSpec) RawStatus(field string) GatewayRouteSpec {
+	r = r.ensureRawResponse()
+	r.Response.Raw.Status = strings.TrimSpace(field)
+	return r
+}
+
+// RawHeaders overrides the optional protobuf response map field used as HTTP headers.
+func (r GatewayRouteSpec) RawHeaders(field string) GatewayRouteSpec {
+	r = r.ensureRawResponse()
+	r.Response.Raw.Headers = strings.TrimSpace(field)
+	return r
+}
+
+func (r GatewayRouteSpec) ensureRawResponse() GatewayRouteSpec {
+	if r.Response == nil {
+		r.Response = &ResponsePolicy{}
+	}
+	if r.Response.Raw == nil {
+		r.Response.Raw = defaultRawResponsePolicy("")
+	}
+	return r
+}
+
+func defaultRawResponsePolicy(contentType string) *RawResponsePolicy {
+	return &RawResponsePolicy{
+		ContentType: strings.TrimSpace(contentType),
+		Body:        "body",
+		Status:      "status",
+		Headers:     "headers",
+	}
+}
+
 // NewGatewayPublication builds route metadata and descriptor bytes for Gateway publication.
 //
 // This is the service-side metadata publication entrypoint. Services declare
@@ -128,6 +179,7 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 			Method:     routeSpec.Method,
 			Binding:    routeSpec.Binding,
 			Timeout:    routeSpec.TimeoutString,
+			Response:   cloneResponsePolicy(routeSpec.Response),
 		})
 		if err != nil {
 			return nil, nil, err

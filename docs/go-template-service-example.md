@@ -257,6 +257,46 @@ Service code declares the explicit public Gateway path such as
 prefix. If an application wants a prefix such as `/payment`, declare it
 explicitly in the route path.
 
+Ordinary routes use the Gateway JSON response envelope. If a service needs to
+return HTML, CSV, PDF, plain text, or another browser/file-like response, declare
+the route as raw output:
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+	Body("*").
+	RawResponse("text/html; charset=utf-8")
+```
+
+The response message can use the default raw field names:
+
+```proto
+message RenderHTMLResponse {
+  string body = 1;
+  string content_type = 2;
+  int32 status = 3;
+  map<string, string> headers = 4;
+}
+```
+
+`RawResponse` writes the configured `body` field directly to the HTTP response
+instead of wrapping it in the JSON envelope. `content_type` in route metadata has
+priority over the response message field. `status` defaults to `200`, and
+`headers` is optional. If a service uses different response field names, override
+them explicitly:
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+	Body("*").
+	RawResponse("text/html; charset=utf-8").
+	RawBody("html").
+	RawStatus("http_status").
+	RawHeaders("response_headers")
+```
+
+Gateway implementations should compile `response.raw` metadata against protobuf
+descriptors when routes are loaded. They must not infer raw output from method
+names, URL paths, or the mere presence of `body` / `content_type` fields.
+
 ## Service Spec
 
 `internal/bootstrap/module.go`

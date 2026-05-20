@@ -204,6 +204,44 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 服务只声明 HTTP method/path、RPC method 和参数绑定关系。`runtime-sdk` 会从 protobuf descriptor 推导 full method、request type、response type 和 descriptor id。
 服务代码声明的是显式公网网关路径，例如 `/v1/payments/{id}`；SDK 只规范化斜杠，不会自动添加服务名前缀。如果应用需要 `/payment` 这类前缀，应在 route path 中显式声明。
 
+普通路由默认走 Gateway JSON response envelope。如果服务需要返回 HTML、CSV、
+PDF、纯文本或其他浏览器/文件型响应，应显式声明 raw output：
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+	Body("*").
+	RawResponse("text/html; charset=utf-8")
+```
+
+response message 可以使用默认 raw 字段名：
+
+```proto
+message RenderHTMLResponse {
+  string body = 1;
+  string content_type = 2;
+  int32 status = 3;
+  map<string, string> headers = 4;
+}
+```
+
+`RawResponse` 会让 Gateway 直接把配置的 `body` 字段写入 HTTP response，
+而不是包 JSON envelope。route metadata 中的 `content_type` 优先级高于
+response message 字段。`status` 默认是 `200`，`headers` 是可选字段。
+如果服务使用不同的 response 字段名，可以显式覆盖：
+
+```go
+gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
+	Body("*").
+	RawResponse("text/html; charset=utf-8").
+	RawBody("html").
+	RawStatus("http_status").
+	RawHeaders("response_headers")
+```
+
+Gateway 实现应在加载路由时基于 protobuf descriptor 静态编译
+`response.raw` 元数据，不能根据方法名、URL path 或仅仅存在
+`body` / `content_type` 字段来猜测 raw 输出。
+
 ## 服务模块
 
 `internal/bootstrap/module.go`

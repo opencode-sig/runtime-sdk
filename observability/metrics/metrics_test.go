@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestRecordHTTPRequestRecordsRouteAndStatus(t *testing.T) {
@@ -45,7 +46,160 @@ func TestUnaryServerInterceptorRecordsCode(t *testing.T) {
 		"method":  "/api.user.v1.UserService/GetUser",
 		"code":    "Unavailable",
 	}) {
-		t.Fatal("missing grpc request metric")
+		t.Fatal("missing legacy grpc request metric")
+	}
+	if !hasMetric(m, "grpc_server_requests_total", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+		"code":    "Unavailable",
+	}) {
+		t.Fatal("missing grpc server request metric")
+	}
+	if !hasMetric(m, "grpc_server_started_total", map[string]string{
+		"service":      "user",
+		"grpc_type":    "unary",
+		"grpc_service": "api.user.v1.UserService",
+		"grpc_method":  "GetUser",
+	}) {
+		t.Fatal("missing compatible grpc started metric")
+	}
+	if !hasMetric(m, "grpc_server_handled_total", map[string]string{
+		"service":      "user",
+		"grpc_type":    "unary",
+		"grpc_service": "api.user.v1.UserService",
+		"grpc_method":  "GetUser",
+		"grpc_code":    "Unavailable",
+	}) {
+		t.Fatal("missing compatible grpc handled metric")
+	}
+	if !hasMetric(m, "grpc_server_handling_seconds", map[string]string{
+		"service":      "user",
+		"grpc_type":    "unary",
+		"grpc_service": "api.user.v1.UserService",
+		"grpc_method":  "GetUser",
+		"grpc_code":    "Unavailable",
+	}) {
+		t.Fatal("missing compatible grpc handling latency metric")
+	}
+	if !hasMetric(m, "grpc_server_request_duration_seconds", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+		"code":    "Unavailable",
+	}) {
+		t.Fatal("missing grpc server latency metric")
+	}
+	if got := metricValue(t, m, "runtime_service_info", map[string]string{"service": "user"}); got != 1 {
+		t.Fatalf("runtime_service_info = %v, want 1", got)
+	}
+	if got := metricValue(t, m, "grpc_server_inflight_requests", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+	}); got != 0 {
+		t.Fatalf("grpc_server_inflight_requests = %v, want 0 after completion", got)
+	}
+}
+
+func TestUnaryServerInterceptorRecordsMessageSizes(t *testing.T) {
+	m := New("user")
+	interceptor := m.UnaryServerInterceptor()
+	_, err := interceptor(
+		context.Background(),
+		&emptypb.Empty{},
+		&grpc.UnaryServerInfo{FullMethod: "/api.user.v1.UserService/GetUser"},
+		func(ctx context.Context, req any) (any, error) {
+			return &emptypb.Empty{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+
+	if !hasMetric(m, "grpc_server_request_message_bytes", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+	}) {
+		t.Fatal("missing grpc request message size metric")
+	}
+	if !hasMetric(m, "grpc_server_msg_received_total", map[string]string{
+		"service":      "user",
+		"grpc_type":    "unary",
+		"grpc_service": "api.user.v1.UserService",
+		"grpc_method":  "GetUser",
+	}) {
+		t.Fatal("missing compatible grpc message received metric")
+	}
+	if !hasMetric(m, "grpc_server_msg_sent_total", map[string]string{
+		"service":      "user",
+		"grpc_type":    "unary",
+		"grpc_service": "api.user.v1.UserService",
+		"grpc_method":  "GetUser",
+	}) {
+		t.Fatal("missing compatible grpc message sent metric")
+	}
+	if !hasMetric(m, "grpc_server_response_message_bytes", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+		"code":    "OK",
+	}) {
+		t.Fatal("missing grpc response message size metric")
+	}
+}
+
+func TestUnaryServerInterceptorRecordsDeadlineExceeded(t *testing.T) {
+	m := New("user")
+	interceptor := m.UnaryServerInterceptor()
+	_, err := interceptor(
+		context.Background(),
+		nil,
+		&grpc.UnaryServerInfo{FullMethod: "/api.user.v1.UserService/GetUser"},
+		func(ctx context.Context, req any) (any, error) {
+			return nil, status.Error(codes.DeadlineExceeded, "deadline")
+		},
+	)
+	if err == nil {
+		t.Fatal("expected handler error")
+	}
+
+	if !hasMetric(m, "grpc_server_deadline_exceeded_total", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+	}) {
+		t.Fatal("missing grpc deadline exceeded metric")
+	}
+}
+
+func TestUnaryServerInterceptorRecordsPanic(t *testing.T) {
+	m := New("user")
+	interceptor := m.UnaryServerInterceptor()
+
+	func() {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("expected handler panic")
+			}
+		}()
+		_, _ = interceptor(
+			context.Background(),
+			nil,
+			&grpc.UnaryServerInfo{FullMethod: "/api.user.v1.UserService/GetUser"},
+			func(ctx context.Context, req any) (any, error) {
+				panic("boom")
+			},
+		)
+	}()
+
+	if !hasMetric(m, "grpc_server_panics_total", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+	}) {
+		t.Fatal("missing grpc panic metric")
+	}
+	if !hasMetric(m, "grpc_server_requests_total", map[string]string{
+		"service": "user",
+		"method":  "/api.user.v1.UserService/GetUser",
+		"code":    "Internal",
+	}) {
+		t.Fatal("missing grpc internal request metric for panic")
 	}
 }
 
