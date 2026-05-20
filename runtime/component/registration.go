@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	applogger "github.com/opencode-sig/runtime-sdk/logger"
@@ -30,11 +31,24 @@ func NewRegistrationComponent(reg registry.Registry, instance registry.ServiceIn
 	}
 }
 
+// WithDataPlaneGeneration attaches the owning DataPlane generation to the
+// instance registration. The registration start time is recorded when Start is
+// called, because that is when this generation becomes visible in registry.
+func (c *RegistrationComponent) WithDataPlaneGeneration(generation string) *RegistrationComponent {
+	if c != nil {
+		c.instance.DataPlaneGeneration = strings.TrimSpace(generation)
+	}
+	return c
+}
+
 // Start registers the instance in registry.
 func (c *RegistrationComponent) Start(ctx context.Context) error {
 	if c.registry == nil {
 		return errors.New("registry is not configured")
 	}
+	now := time.Now().UTC()
+	c.instance.LastSeen = now
+	c.instance.DataPlaneStartedAt = now
 	registration, err := c.registry.Register(ctx, c.instance)
 	if err != nil {
 		return err

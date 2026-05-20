@@ -1,6 +1,9 @@
 package servicekit
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestEtcdConfigStore(t *testing.T) {
 	tests := []struct {
@@ -27,5 +30,27 @@ func TestEtcdConfigStore(t *testing.T) {
 				_ = store.Close()
 			}
 		})
+	}
+}
+
+func TestControlConfigCommandTTLDuration(t *testing.T) {
+	duration, err := (ControlConfig{CommandTTL: "30m"}).CommandTTLDuration()
+	if err != nil {
+		t.Fatalf("CommandTTLDuration error = %v", err)
+	}
+	if duration != 30*time.Minute {
+		t.Fatalf("duration = %s, want 30m", duration)
+	}
+
+	duration, err = (ControlConfig{}).CommandTTLDuration()
+	if err != nil {
+		t.Fatalf("empty CommandTTLDuration error = %v", err)
+	}
+	if duration != 0 {
+		t.Fatalf("empty duration = %s, want 0", duration)
+	}
+
+	if _, err := (ControlConfig{CommandTTL: "bad"}).CommandTTLDuration(); err == nil {
+		t.Fatal("invalid CommandTTLDuration error = nil")
 	}
 }

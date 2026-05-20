@@ -28,7 +28,15 @@ func NewProcessControl(ctx context.Context, cfg Config, watcherCfg ControlWatche
 	if err != nil {
 		return nil, err
 	}
+	ttl, err := cfg.Runtime.Control.CommandTTLDuration()
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
 	store := runtimecontrol.NewEtcdStore(client, cfg.Runtime.Control.CommandsPrefix)
+	if ttl > 0 {
+		store.WithTTL(ttl)
+	}
 	watcher, err := NewControlWatcher(store, manager, watcherCfg, logger)
 	if err != nil {
 		_ = client.Close()

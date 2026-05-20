@@ -9,13 +9,15 @@ import (
 var ErrInstanceNotFound = errors.New("service instance not found")
 
 type ServiceInstance struct {
-	ID        string
-	Name      string
-	Address   string
-	Hostname  string
-	Metadata  map[string]string
-	StartedAt time.Time
-	LastSeen  time.Time
+	ID                  string
+	Name                string
+	Address             string
+	Hostname            string
+	Metadata            map[string]string
+	StartedAt           time.Time
+	LastSeen            time.Time
+	DataPlaneStartedAt  time.Time
+	DataPlaneGeneration string
 }
 
 // Registration represents one service registration.

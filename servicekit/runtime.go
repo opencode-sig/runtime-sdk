@@ -13,6 +13,10 @@ import (
 
 // NewServiceLifecycle builds the lifecycle graph for one service DataPlane.
 func NewServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*lifecycle.Runtime, error) {
+	return newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, "")
+}
+
+func newServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger, dataPlaneGeneration string) (*lifecycle.Runtime, error) {
 	validSpec, err := NewSpec(spec)
 	if err != nil {
 		return nil, err
@@ -31,11 +35,12 @@ func NewServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode
 			return nil, err
 		}
 		if err := AddToLifecycle(app, ComponentConfig{
-			Config:      cfg,
-			Spec:        validSpec,
-			Infra:       infra,
-			RuntimeMode: runtimeMode,
-			Logger:      log,
+			Config:              cfg,
+			Spec:                validSpec,
+			Infra:               infra,
+			RuntimeMode:         runtimeMode,
+			DataPlaneGeneration: dataPlaneGeneration,
+			Logger:              log,
 		}); err != nil {
 			return nil, err
 		}
@@ -68,14 +73,15 @@ func NewServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode
 		return nil, err
 	}
 	if err := AddToLifecycle(app, ComponentConfig{
-		Config:      cfg,
-		Spec:        validSpec,
-		Etcd:        etcdClient,
-		Registry:    reg,
-		Clients:     clients,
-		Infra:       infra,
-		RuntimeMode: runtimeMode,
-		Logger:      log,
+		Config:              cfg,
+		Spec:                validSpec,
+		Etcd:                etcdClient,
+		Registry:            reg,
+		Clients:             clients,
+		Infra:               infra,
+		RuntimeMode:         runtimeMode,
+		DataPlaneGeneration: dataPlaneGeneration,
+		Logger:              log,
 	}); err != nil {
 		_ = clients.Close()
 		_ = etcdClient.Close()

@@ -48,6 +48,7 @@ runtime-sdk 的核心接入模型是：
 - `Config`：服务运行时配置契约。
 - `RuntimeContext`：普通初始化 hook 可见的上下文。
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
+- `Configs`：按逻辑 key 读取配置中心内容，file / etcd 使用同一套 key 约定，例如 `configs/global/app.yaml`。
 - `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd client。
 - `Clients` / `Client[T]`：按服务名获取 gRPC `ClientConn` 或 typed protobuf client。
 - `DecodeSettings[T]`：从 `Config.Settings` 解码业务私有配置。
@@ -62,6 +63,8 @@ runtime-sdk 的核心接入模型是：
 - control-command driven rebuild。
 
 业务代码不应该在 handler 中手动注册服务实例、发布 Gateway 元数据或创建长期持有的 infra client。需要这些资源时，应通过 `Init` / `InitDistributed` 从 `RuntimeContext` 或 `DistributedContext` 获取。
+
+全局配置应放在 `configs/global/` 命名空间下，并通过 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 读取。全局配置不归属任何具体服务，不应塞入某个 `configs/service/*.yaml`。
 
 ### `runtime/gatewaymeta`
 

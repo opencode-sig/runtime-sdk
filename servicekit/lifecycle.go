@@ -19,14 +19,16 @@ type Component interface {
 // ComponentConfig contains the resources needed to add one service to a
 // lifecycle graph.
 type ComponentConfig struct {
-	Config      Config
-	Spec        Spec
-	Etcd        *clientv3.Client
-	Registry    registry.Registry
-	Clients     *Clients
-	Infra       Infra
-	RuntimeMode string
-	Logger      *logger.Logger
+	Config              Config
+	Spec                Spec
+	Etcd                *clientv3.Client
+	Registry            registry.Registry
+	Clients             *Clients
+	Infra               Infra
+	Configs             *Configs
+	RuntimeMode         string
+	DataPlaneGeneration string
+	Logger              *logger.Logger
 }
 
 // NewComponent returns a component factory for one service spec.
@@ -56,10 +58,19 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 	if strings.TrimSpace(cfg.Config.Service.Name) == "" {
 		cfg.Config.Service.Name = spec.Name
 	}
+	configs := cfg.Configs
+	if configs == nil {
+		var err error
+		configs, err = NewConfigs(cfg.Config, WithConfigsEtcdClient(cfg.Etcd))
+		if err != nil {
+			return err
+		}
+	}
 	if cfg.Spec.InitDistributed != nil {
 		instanceStore, _ := cfg.Registry.(registry.InstanceStore)
 		if err := cfg.Spec.InitDistributed(DistributedContext{
 			Config:        cfg.Config,
+			Configs:       configs,
 			Infra:         cfg.Infra,
 			App:           app,
 			Etcd:          cfg.Etcd,
@@ -72,7 +83,7 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		}
 	}
 	if cfg.Spec.Init != nil {
-		if err := cfg.Spec.Init(RuntimeContext{Config: cfg.Config, Infra: cfg.Infra, App: app, Logger: cfg.Logger}); err != nil {
+		if err := cfg.Spec.Init(RuntimeContext{Config: cfg.Config, Configs: configs, Infra: cfg.Infra, App: app, Logger: cfg.Logger}); err != nil {
 			return err
 		}
 	}

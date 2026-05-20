@@ -16,6 +16,8 @@ import (
 const (
 	CommandRebuild = "rebuild"
 	CommandRestart = "restart"
+
+	defaultCommandTTL = time.Hour
 )
 
 // Command is a runtime control-plane command.
@@ -37,11 +39,21 @@ type Store interface {
 type EtcdStore struct {
 	client *clientv3.Client
 	prefix string
+	ttl    time.Duration
 }
 
 // NewEtcdStore creates an etcd-backed command store.
 func NewEtcdStore(client *clientv3.Client, prefix string) *EtcdStore {
-	return &EtcdStore{client: client, prefix: cleanPrefix(prefix)}
+	return &EtcdStore{client: client, prefix: cleanPrefix(prefix), ttl: defaultCommandTTL}
+}
+
+// WithTTL configures how long published commands are retained in etcd.
+func (s *EtcdStore) WithTTL(ttl time.Duration) *EtcdStore {
+	if s == nil {
+		return s
+	}
+	s.ttl = ttl
+	return s
 }
 
 // Publish writes one command under the target service command prefix.
@@ -65,7 +77,19 @@ func (s *EtcdStore) Publish(ctx context.Context, command Command) error {
 		return err
 	}
 	key := path.Join(s.prefix, command.Service, fmt.Sprintf("%d", command.CreatedAt.UnixNano()))
-	_, err = s.client.Put(ctx, key, string(data))
+	if s.ttl <= 0 {
+		_, err = s.client.Put(ctx, key, string(data))
+		return err
+	}
+	seconds := int64(s.ttl.Seconds())
+	if seconds <= 0 {
+		seconds = 1
+	}
+	lease, err := s.client.Grant(ctx, seconds)
+	if err != nil {
+		return err
+	}
+	_, err = s.client.Put(ctx, key, string(data), clientv3.WithLease(lease.ID))
 	return err
 }
 

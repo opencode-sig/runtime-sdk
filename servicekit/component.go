@@ -46,7 +46,7 @@ func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		"admin_addr":           service.AdminAddr,
 		"advertise_admin_addr": service.AdvertiseAdminAddr,
 	})
-	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewRegistrationComponent(cfg.Registry, instance, cfg.Logger))
+	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewRegistrationComponent(cfg.Registry, instance, cfg.Logger).WithDataPlaneGeneration(cfg.DataPlaneGeneration))
 }
 
 func addGatewayMetadata(app *lifecycle.Runtime, cfg ComponentConfig) error {

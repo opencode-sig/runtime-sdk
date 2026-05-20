@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	infraetcd "github.com/opencode-sig/runtime-sdk/infra/etcd"
 	infrakafka "github.com/opencode-sig/runtime-sdk/infra/kafka"
@@ -49,6 +50,7 @@ type ConfigSourceConfig struct {
 
 type ControlConfig struct {
 	CommandsPrefix string `json:"commands_prefix" yaml:"commands_prefix"`
+	CommandTTL     string `json:"command_ttl" yaml:"command_ttl"`
 }
 
 type ServiceConfig struct {
@@ -98,6 +100,23 @@ func hasEtcdConfig(cfg EtcdConfig) bool {
 		}
 	}
 	return false
+}
+
+// CommandTTLDuration returns the command retention TTL used by etcd-backed
+// command stores. Empty values keep the runtime control package default.
+func (c ControlConfig) CommandTTLDuration() (time.Duration, error) {
+	value := strings.TrimSpace(c.CommandTTL)
+	if value == "" {
+		return 0, nil
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("parse control command_ttl: %w", err)
+	}
+	if duration < 0 {
+		return 0, fmt.Errorf("control command_ttl must not be negative")
+	}
+	return duration, nil
 }
 
 // DecodeSettings decodes the service private settings into a strong type.

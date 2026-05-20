@@ -10,15 +10,17 @@ import (
 
 // RuntimeContext exposes common runtime assembly state to service modules.
 type RuntimeContext struct {
-	Config Config
-	Infra  Infra
-	App    *lifecycle.Runtime
-	Logger *logger.Logger
+	Config  Config
+	Configs *Configs
+	Infra   Infra
+	App     *lifecycle.Runtime
+	Logger  *logger.Logger
 }
 
 // DistributedContext exposes distributed runtime resources to service modules.
 type DistributedContext struct {
 	Config        Config
+	Configs       *Configs
 	Infra         Infra
 	App           *lifecycle.Runtime
 	Etcd          *clientv3.Client

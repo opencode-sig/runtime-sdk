@@ -18,23 +18,32 @@ type ServiceDataPlane struct {
 }
 
 func NewServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*ServiceDataPlane, error) {
-	app, err := NewServiceLifecycle(ctx, cfg, spec, runtimeMode, log)
+	generation := newGeneration(spec.Name)
+	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation)
 	if err != nil {
 		return nil, err
 	}
-	return NewDataPlane(spec.Name, cfg, app, log)
+	return newDataPlaneWithGeneration(generation, cfg, app, log)
 }
 
 func NewDataPlane(name string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
+	return newDataPlaneWithGeneration(newGeneration(name), cfg, app, log)
+}
+
+func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
 	if app == nil {
 		return nil, fmt.Errorf("data plane lifecycle is required")
 	}
 	return &ServiceDataPlane{
-		generation: fmt.Sprintf("%s-%d", name, time.Now().UnixNano()),
+		generation: generation,
 		config:     cfg,
 		lifecycle:  app,
 		logger:     log,
 	}, nil
+}
+
+func newGeneration(name string) string {
+	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano())
 }
 
 func (r *ServiceDataPlane) Generation() string {

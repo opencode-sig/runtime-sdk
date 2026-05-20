@@ -29,6 +29,18 @@ func TestCleanPrefix(t *testing.T) {
 	}
 }
 
+func TestEtcdStoreDefaultTTL(t *testing.T) {
+	store := NewEtcdStore(nil, "")
+
+	if store.ttl != time.Hour {
+		t.Fatalf("ttl = %s, want 1h", store.ttl)
+	}
+	store.WithTTL(30 * time.Minute)
+	if store.ttl != 30*time.Minute {
+		t.Fatalf("ttl after WithTTL = %s, want 30m", store.ttl)
+	}
+}
+
 func TestCommandFromEvent(t *testing.T) {
 	createdAt := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
 	event := &clientv3.Event{
