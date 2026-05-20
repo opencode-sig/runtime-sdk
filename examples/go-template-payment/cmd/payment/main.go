@@ -41,6 +41,9 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode bootstrap config: %w", err)
 	}
+	if cfg.Runtime.Config.Root == "" {
+		cfg.Runtime.Config.Root = root
+	}
 	if !strings.EqualFold(strings.TrimSpace(cfg.Runtime.Config.Provider), "etcd") {
 		return cfg, nil
 	}
@@ -58,6 +61,11 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
 	managed, err := runtimeconfig.Decode[servicekit.Config](data)
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
+	}
+	if managed.Runtime.Config.Provider == "" || strings.EqualFold(strings.TrimSpace(managed.Runtime.Config.Provider), "file") {
+		if managed.Runtime.Config.Root == "" {
+			managed.Runtime.Config.Root = root
+		}
 	}
 	return managed, nil
 }

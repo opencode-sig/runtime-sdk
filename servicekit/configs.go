@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,15 +20,15 @@ type configLister interface {
 // Configs exposes runtime config-center reads to service initialization code.
 //
 // It is read-oriented on purpose. Services should load global/service config in
-// Init or InitDistributed and keep write operations in platform services such as
-// runtimeadmin.
+// Init or InitDistributed and keep write operations in platform management tools.
 type Configs struct {
 	provider runtimeconfig.ConfigProvider
 	lister   configLister
 }
 
 type configsOptions struct {
-	etcd *clientv3.Client
+	etcd     *clientv3.Client
+	fileRoot string
 }
 
 type ConfigsOption func(*configsOptions)
@@ -36,6 +37,13 @@ type ConfigsOption func(*configsOptions)
 func WithConfigsEtcdClient(client *clientv3.Client) ConfigsOption {
 	return func(opts *configsOptions) {
 		opts.etcd = client
+	}
+}
+
+// WithConfigsFileRoot sets the filesystem root used by file-backed config reads.
+func WithConfigsFileRoot(root string) ConfigsOption {
+	return func(opts *configsOptions) {
+		opts.fileRoot = root
 	}
 }
 
@@ -49,7 +57,7 @@ func NewConfigs(cfg Config, options ...ConfigsOption) (*Configs, error) {
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.Runtime.Config.Provider)) {
 	case "file", "":
-		provider := runtimeconfig.NewFileProvider(fileConfigRoot(cfg.Runtime.Config.Key))
+		provider := runtimeconfig.NewFileProvider(fileConfigRoot(cfg.Runtime.Config, opts.fileRoot))
 		return &Configs{provider: provider, lister: provider}, nil
 	case "etcd":
 		var provider *runtimeconfig.EtcdProvider
@@ -99,8 +107,26 @@ func (c *Configs) List(ctx context.Context, prefix string) ([]runtimeconfig.Entr
 	return c.lister.List(ctx, prefix)
 }
 
-func fileConfigRoot(key string) string {
-	key = strings.TrimSpace(key)
+// Close releases provider resources when the provider owns them.
+func (c *Configs) Close() error {
+	if c == nil {
+		return nil
+	}
+	closer, ok := c.provider.(io.Closer)
+	if !ok || closer == nil {
+		return nil
+	}
+	return closer.Close()
+}
+
+func fileConfigRoot(cfg ConfigSourceConfig, override string) string {
+	if root := strings.TrimSpace(override); root != "" {
+		return normalizeFileConfigRoot(root)
+	}
+	if root := strings.TrimSpace(cfg.Root); root != "" {
+		return normalizeFileConfigRoot(root)
+	}
+	key := strings.TrimSpace(cfg.Key)
 	if key == "" || !filepath.IsAbs(key) {
 		return "."
 	}
@@ -109,4 +135,12 @@ func fileConfigRoot(key string) string {
 		return filepath.Dir(dir)
 	}
 	return dir
+}
+
+func normalizeFileConfigRoot(root string) string {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if filepath.Base(root) == "configs" {
+		return filepath.Dir(root)
+	}
+	return root
 }

@@ -34,6 +34,10 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
 ```
 
 `LoadConfig` 由接入方实现。它可以从本地文件、etcd 配置中心或任意部署侧配置源加载配置，并返回 `servicekit.Config`。
+如果服务需要在 `Init` / `InitDistributed` 中读取全局配置，可以通过
+`ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 使用与 file / etcd
+一致的逻辑 key。文件模式下建议在返回配置前设置 `cfg.Runtime.Config.Root`，
+让 `servicekit.Configs` 能定位配置根目录。
 
 ### 文件配置
 
@@ -44,7 +48,14 @@ func loadFileConfig(ctx context.Context, root string, key string) (servicekit.Co
     if err != nil {
         return servicekit.Config{}, err
     }
-    return runtimeconfig.Decode[servicekit.Config](data)
+    cfg, err := runtimeconfig.Decode[servicekit.Config](data)
+    if err != nil {
+        return servicekit.Config{}, err
+    }
+    if cfg.Runtime.Config.Root == "" {
+        cfg.Runtime.Config.Root = root
+    }
+    return cfg, nil
 }
 ```
 

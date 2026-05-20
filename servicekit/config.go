@@ -44,6 +44,7 @@ type RuntimeConfig struct {
 
 type ConfigSourceConfig struct {
 	Provider string     `json:"provider" yaml:"provider"`
+	Root     string     `json:"root,omitempty" yaml:"root,omitempty"`
 	Key      string     `json:"key" yaml:"key"`
 	Etcd     EtcdConfig `json:"etcd" yaml:"etcd"`
 }

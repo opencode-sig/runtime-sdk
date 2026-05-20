@@ -37,6 +37,10 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
 
 `LoadConfig` is owned by the caller. It can load local files, etcd-backed
 configuration, or any deployment-specific source, then return a `servicekit.Config`.
+Service initialization code can read shared config through
+`ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` with the same logical
+keys in file and etcd modes. In file mode, set `cfg.Runtime.Config.Root` before
+returning the config so `servicekit.Configs` can locate the config root.
 
 ### File Config
 
@@ -47,7 +51,14 @@ func loadFileConfig(ctx context.Context, root string, key string) (servicekit.Co
     if err != nil {
         return servicekit.Config{}, err
     }
-    return runtimeconfig.Decode[servicekit.Config](data)
+    cfg, err := runtimeconfig.Decode[servicekit.Config](data)
+    if err != nil {
+        return servicekit.Config{}, err
+    }
+    if cfg.Runtime.Config.Root == "" {
+        cfg.Runtime.Config.Root = root
+    }
+    return cfg, nil
 }
 ```
 

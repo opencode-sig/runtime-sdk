@@ -28,7 +28,10 @@ in a release note.
 - SDK code must not hardcode application names, service names, local config
   paths, or project prefixes.
 - `servicekit` must not depend on protobuf generated packages, Gin, Gateway
-  response envelopes, or optional infra implementations.
+  response envelopes, or concrete platform applications.
+- `servicekit` may aggregate public optional-infra config and client facades for
+  service onboarding. Core runtime packages must still not depend on optional
+  MySQL, Redis, or Kafka packages.
 - `runtime/*` packages must not depend on the top-level `servicekit` facade.
 - core runtime packages must not depend on optional MySQL, Redis, or Kafka
   packages.

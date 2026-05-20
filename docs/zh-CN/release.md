@@ -21,7 +21,7 @@ make smoke-consumer  # 需要消费方项目 checkout 和 etcd
 - 确认公开 API 仍然保持应用无关；
 - 通过 `make verify` 执行格式、tidy、test、vet 和边界检查；
 - 不要新增引用消费方项目的默认值、路径或 prefix；
-- core runtime 和 `servicekit` 不能依赖可选 infra；
+- core runtime 不能依赖可选 infra；`servicekit` 可以聚合公开 infra 配置和 client facade；
 - 更新 `CHANGELOG.md`，记录用户可感知变更；
 - 使用本地 `replace` 在消费方项目中跑集成 smoke。
 

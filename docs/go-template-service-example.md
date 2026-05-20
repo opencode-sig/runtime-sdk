@@ -330,6 +330,7 @@ logger:
 runtime:
   config:
     provider: file
+    root: configs
     key: service.yaml
     etcd:
       endpoints:
@@ -425,6 +426,9 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode config: %w", err)
 	}
+	if cfg.Runtime.Config.Root == "" {
+		cfg.Runtime.Config.Root = root
+	}
 	return cfg, nil
 }
 ```
@@ -513,6 +517,9 @@ func loadManagedConfig(ctx context.Context, root string, bootstrapKey string) (s
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode bootstrap config: %w", err)
 	}
+	if bootstrap.Runtime.Config.Root == "" {
+		bootstrap.Runtime.Config.Root = root
+	}
 	if bootstrap.Runtime.Config.Provider != "etcd" {
 		return bootstrap, nil
 	}
@@ -530,6 +537,9 @@ func loadManagedConfig(ctx context.Context, root string, bootstrapKey string) (s
 	cfg, err := runtimeconfig.Decode[servicekit.Config](data)
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
+	}
+	if cfg.Runtime.Config.Root == "" && (cfg.Runtime.Config.Provider == "" || cfg.Runtime.Config.Provider == "file") {
+		cfg.Runtime.Config.Root = root
 	}
 	return cfg, nil
 }

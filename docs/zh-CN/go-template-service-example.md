@@ -282,6 +282,9 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("decode config: %w", err)
 	}
+	if cfg.Runtime.Config.Root == "" {
+		cfg.Runtime.Config.Root = root
+	}
 	if !strings.EqualFold(strings.TrimSpace(cfg.Runtime.Config.Provider), "etcd") {
 		return cfg, nil
 	}
@@ -296,7 +299,14 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
 	if err != nil {
 		return servicekit.Config{}, fmt.Errorf("load etcd config: %w", err)
 	}
-	return runtimeconfig.Decode[servicekit.Config](data)
+	managed, err := runtimeconfig.Decode[servicekit.Config](data)
+	if err != nil {
+		return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
+	}
+	if managed.Runtime.Config.Root == "" && (managed.Runtime.Config.Provider == "" || strings.EqualFold(strings.TrimSpace(managed.Runtime.Config.Provider), "file")) {
+		managed.Runtime.Config.Root = root
+	}
+	return managed, nil
 }
 ```
 
@@ -318,6 +328,7 @@ logger:
 runtime:
   config:
     provider: file
+    root: configs
     key: service.yaml
   control:
     commands_prefix: /runtime/control/commands

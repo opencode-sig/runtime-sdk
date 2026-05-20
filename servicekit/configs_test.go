@@ -2,6 +2,7 @@ package servicekit
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,96 @@ import (
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
 	"google.golang.org/grpc"
 )
+
+func TestConfigsDecodeFileRootConfig(t *testing.T) {
+	root := t.TempDir()
+	globalDir := filepath.Join(root, "configs", "global")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatalf("mkdir global: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "app.yaml"), []byte("app_name: rooted\n"), 0o600); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
+	configs, err := NewConfigs(Config{Runtime: RuntimeConfig{Config: ConfigSourceConfig{
+		Provider: "file",
+		Root:     root,
+		Key:      "configs/runtime.yaml",
+	}}})
+	if err != nil {
+		t.Fatalf("new configs: %v", err)
+	}
+
+	var app struct {
+		AppName string `yaml:"app_name"`
+	}
+	if err := configs.Decode(context.Background(), "configs/global/app.yaml", &app); err != nil {
+		t.Fatalf("decode global config: %v", err)
+	}
+	if app.AppName != "rooted" {
+		t.Fatalf("app = %#v", app)
+	}
+}
+
+func TestConfigsDecodeFileRootConfigDirectory(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "configs")
+	globalDir := filepath.Join(configDir, "global")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatalf("mkdir global: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "app.yaml"), []byte("app_name: configdir\n"), 0o600); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
+	configs, err := NewConfigs(Config{Runtime: RuntimeConfig{Config: ConfigSourceConfig{
+		Provider: "file",
+		Root:     configDir,
+		Key:      "service.yaml",
+	}}})
+	if err != nil {
+		t.Fatalf("new configs: %v", err)
+	}
+
+	var app struct {
+		AppName string `yaml:"app_name"`
+	}
+	if err := configs.Decode(context.Background(), "configs/global/app.yaml", &app); err != nil {
+		t.Fatalf("decode global config: %v", err)
+	}
+	if app.AppName != "configdir" {
+		t.Fatalf("app = %#v", app)
+	}
+}
+
+func TestConfigsDecodeFileRootOption(t *testing.T) {
+	root := t.TempDir()
+	globalDir := filepath.Join(root, "configs", "global")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatalf("mkdir global: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "app.yaml"), []byte("app_name: option\n"), 0o600); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
+	configs, err := NewConfigs(Config{Runtime: RuntimeConfig{Config: ConfigSourceConfig{
+		Provider: "file",
+		Key:      "configs/runtime.yaml",
+	}}}, WithConfigsFileRoot(root))
+	if err != nil {
+		t.Fatalf("new configs: %v", err)
+	}
+
+	var app struct {
+		AppName string `yaml:"app_name"`
+	}
+	if err := configs.Decode(context.Background(), "configs/global/app.yaml", &app); err != nil {
+		t.Fatalf("decode global config: %v", err)
+	}
+	if app.AppName != "option" {
+		t.Fatalf("app = %#v", app)
+	}
+}
 
 func TestConfigsDecodeFileGlobalConfig(t *testing.T) {
 	root := t.TempDir()
@@ -70,4 +161,31 @@ func TestAddToLifecycleProvidesConfigs(t *testing.T) {
 	if seen == nil {
 		t.Fatal("configs accessor was not provided")
 	}
+}
+
+func TestConfigsCloseClosesProvider(t *testing.T) {
+	want := errors.New("close failed")
+	provider := &closableConfigProvider{err: want}
+	configs := &Configs{provider: provider}
+
+	if err := configs.Close(); !errors.Is(err, want) {
+		t.Fatalf("close error = %v, want %v", err, want)
+	}
+	if !provider.closed {
+		t.Fatal("provider was not closed")
+	}
+}
+
+type closableConfigProvider struct {
+	closed bool
+	err    error
+}
+
+func (p *closableConfigProvider) Load(ctx context.Context, key string) ([]byte, error) {
+	return nil, nil
+}
+
+func (p *closableConfigProvider) Close() error {
+	p.closed = true
+	return p.err
 }

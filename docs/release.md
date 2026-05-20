@@ -19,7 +19,8 @@ Before tagging a release:
 - confirm the public API remains application-neutral;
 - run formatting checks through `make verify`;
 - avoid adding defaults that reference any consuming project;
-- keep optional infra packages out of core runtime and servicekit;
+- keep optional infra packages out of core runtime; `servicekit` may aggregate
+  public infra config and client facades for onboarding;
 - update `CHANGELOG.md` with user-visible changes;
 - run the consuming project's integration smoke tests with the local `replace`
   target before publishing.

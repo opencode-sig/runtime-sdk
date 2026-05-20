@@ -489,6 +489,9 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
     if err != nil {
         return servicekit.Config{}, fmt.Errorf("decode config: %w", err)
     }
+    if cfg.Runtime.Config.Root == "" {
+        cfg.Runtime.Config.Root = root
+    }
     if !strings.EqualFold(strings.TrimSpace(cfg.Runtime.Config.Provider), "etcd") {
         return cfg, nil
     }
@@ -503,7 +506,15 @@ func loadConfig(ctx context.Context, root string, key string) (servicekit.Config
     if err != nil {
         return servicekit.Config{}, fmt.Errorf("load etcd config: %w", err)
     }
-    return runtimeconfig.Decode[servicekit.Config](data)
+    managed, err := runtimeconfig.Decode[servicekit.Config](data)
+    if err != nil {
+        return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
+    }
+    if managed.Runtime.Config.Root == "" &&
+        (managed.Runtime.Config.Provider == "" || strings.EqualFold(strings.TrimSpace(managed.Runtime.Config.Provider), "file")) {
+        managed.Runtime.Config.Root = root
+    }
+    return managed, nil
 }
 ```
 
@@ -527,6 +538,7 @@ logger:
 runtime:
   config:
     provider: file
+    root: configs
     key: service.yaml
   control:
     commands_prefix: /runtime/control/commands
@@ -559,6 +571,7 @@ settings: {}
 
 - `logger`：SDK logger 配置契约。`logger.NewContextWithConfig` 可按该结构创建 logger；`servicekit.Run` 在 `RunOptions.Logger` 为空时会创建基于 `Spec.Name` 的默认 logger。
 - `runtime.config.provider`：`file` 或 `etcd`。只有 `etcd` 会启用 process control watcher。
+- `runtime.config.root`：文件配置根目录。本地 bootstrap 使用 `--config-root configs` 时可写成 `configs`；`servicekit.Configs` 会把 `configs` 目录规范化为项目根目录，使 `configs/global/app.yaml` 这类逻辑 key 在 file / etcd 下保持一致。
 - `runtime.config.key`：配置逻辑 key。本地文件模式下是文件名或绝对路径；etcd 模式下是 etcd prefix 下的逻辑 key。
 - `runtime.config.etcd`：etcd 配置中心 endpoints 和 prefix。
 - `runtime.control.commands_prefix`：控制命令前缀，默认语义为 `/runtime/control/commands/<service>/<timestamp>`。
@@ -764,7 +777,7 @@ infra:
 
 - 不要导入任何外部项目的 `internal` 包。
 - 不要硬编码应用名、服务名、本地配置路径、业务路由前缀或部署环境。
-- `servicekit` 不应依赖 protobuf 生成包、Gin、Gateway response envelope 或可选 infra 的业务封装。
+- `servicekit` 不应依赖 protobuf 生成包、Gin、Gateway response envelope 或具体平台应用；它可以聚合公开 optional infra 配置和 client facade，方便服务接入。
 - `runtime/*` 包不要反向依赖顶层 `servicekit` 门面。
 - core runtime 包不要依赖可选 MySQL、Redis、Kafka 包。
 - `logger`、`rpcerror`、`apperror` 不要依赖 runtime 或 infra 包。

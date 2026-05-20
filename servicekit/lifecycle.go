@@ -7,6 +7,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/opencode-sig/runtime-sdk/logger"
+	runtimecomponent "github.com/opencode-sig/runtime-sdk/runtime/component"
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
@@ -59,10 +60,20 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		cfg.Config.Service.Name = spec.Name
 	}
 	configs := cfg.Configs
+	closeConfigsOnError := false
+	defer func() {
+		if closeConfigsOnError {
+			_ = configs.Close()
+		}
+	}()
 	if configs == nil {
 		var err error
 		configs, err = NewConfigs(cfg.Config, WithConfigsEtcdClient(cfg.Etcd))
 		if err != nil {
+			return err
+		}
+		closeConfigsOnError = true
+		if err := app.Add(cfg.Spec.Name+"_configs", runtimecomponent.NewCloseComponent(configs.Close)); err != nil {
 			return err
 		}
 	}
@@ -100,5 +111,6 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 			return err
 		}
 	}
+	closeConfigsOnError = false
 	return nil
 }

@@ -10,7 +10,7 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 check_external_internal_imports() {
-  if rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!README*.md' --glob '!go.sum' '"[^" ]*/internal/[^" ]*"' . \
+  if rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!*.md' --glob '!go.sum' '"[^" ]*/internal/[^" ]*"' . \
     | rg -v '"github.com/opencode-sig/runtime-sdk/[^" ]*/internal/[^" ]*"'; then
     echo "boundary check failed: sdk must not import external internal packages"
     exit 1
@@ -22,7 +22,7 @@ check_absent() {
   local pattern="$2"
   shift 2
 
-  if rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!README*.md' --glob '!go.sum' "$pattern" "$@"; then
+  if rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!*.md' --glob '!go.sum' "$pattern" "$@"; then
     echo "boundary check failed: ${name}"
     exit 1
   fi
@@ -41,13 +41,8 @@ check_absent \
   .
 
 check_absent \
-  "servicekit must not depend on business protocols or HTTP frameworks" \
+  "servicekit must not depend on business protocols, HTTP frameworks, or platform applications" \
   'protobuf/|github.com/gin-gonic/gin|response envelope|runtimeadmin' \
-  servicekit
-
-check_absent \
-  "servicekit must not depend on optional infra implementations" \
-  'github.com/opencode-sig/runtime-sdk/infra/(mysql|redis|kafka)' \
   servicekit
 
 check_absent \

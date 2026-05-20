@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added `servicekit.Configs` for read-oriented config-center access during
+  service initialization, including consistent logical keys for file and etcd
+  config sources.
+- Added `runtime.config.root` to `servicekit.Config` so file-backed global
+  config reads can resolve from the intended config root.
+- Added control command TTL support and DataPlane generation metadata in service
+  registry instances.
+- Updated API boundary rules to match the current `servicekit` facade design:
+  `servicekit` may aggregate optional infra config and client facades, while
+  core runtime packages remain independent from optional infra.
 - Renamed generic runtime observability helpers from `platform` to
   `observability` for clearer public API semantics.
 - Split `servicekit` responsibilities across focused files without
