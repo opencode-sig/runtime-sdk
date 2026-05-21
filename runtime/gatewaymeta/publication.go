@@ -22,6 +22,7 @@ type GatewayRouteSpec struct {
 	HTTPPath      string
 	Binding       Binding
 	TimeoutString string
+	Auth          *AuthPolicy
 	Response      *ResponsePolicy
 	Disabled      bool
 }
@@ -82,6 +83,18 @@ func (r GatewayRouteSpec) Body(value string) GatewayRouteSpec {
 // Timeout sets the upstream gRPC timeout for this route.
 func (r GatewayRouteSpec) Timeout(value string) GatewayRouteSpec {
 	r.TimeoutString = value
+	return r
+}
+
+// Public marks this route as an authentication whitelist route.
+//
+// Gateways with authentication enabled skip Authenticator calls for public
+// routes. Routes without this policy keep the default authenticated behavior.
+func (r GatewayRouteSpec) Public() GatewayRouteSpec {
+	if r.Auth == nil {
+		r.Auth = &AuthPolicy{}
+	}
+	r.Auth.Public = true
 	return r
 }
 
@@ -179,6 +192,7 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 			Method:     routeSpec.Method,
 			Binding:    routeSpec.Binding,
 			Timeout:    routeSpec.TimeoutString,
+			Auth:       cloneAuthPolicy(routeSpec.Auth),
 			Response:   cloneResponsePolicy(routeSpec.Response),
 		})
 		if err != nil {

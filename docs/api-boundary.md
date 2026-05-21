@@ -40,6 +40,10 @@ in a release note.
 - Services declare explicit public Gateway paths. `runtime/gatewaymeta`
   normalizes slashes but does not add service-name prefixes. Gateways route by
   metadata, not by inferring a service from URL prefixes.
+- Route authentication whitelist is declarative metadata. Services that own a
+  public route must mark it with `runtime/gatewaymeta.Public`; Gateway
+  implementations should default to authentication for non-public dynamic
+  routes when auth is enabled and must not keep a separate path whitelist.
 - Gateway response behavior defaults to the application JSON envelope.
   Browser-renderable or file-like raw output is part of the Gateway route
   contract and must be declared through `runtime/gatewaymeta.RawResponse`.

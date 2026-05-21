@@ -13,6 +13,7 @@ type RouteMeta struct {
 	GRPC     GRPCMeta        `json:"grpc"`
 	Binding  Binding         `json:"binding"`
 	Timeout  string          `json:"timeout,omitempty"`
+	Auth     *AuthPolicy     `json:"auth,omitempty"`
 	Response *ResponsePolicy `json:"response,omitempty"`
 }
 
@@ -39,6 +40,10 @@ type ResponsePolicy struct {
 	Raw *RawResponsePolicy `json:"raw,omitempty"`
 }
 
+type AuthPolicy struct {
+	Public bool `json:"public,omitempty"`
+}
+
 type RawResponsePolicy struct {
 	ContentType string `json:"content_type,omitempty"`
 	Body        string `json:"body,omitempty"`
@@ -55,6 +60,14 @@ func cloneResponsePolicy(policy *ResponsePolicy) *ResponsePolicy {
 		raw := *policy.Raw
 		clone.Raw = &raw
 	}
+	return &clone
+}
+
+func cloneAuthPolicy(policy *AuthPolicy) *AuthPolicy {
+	if policy == nil {
+		return nil
+	}
+	clone := *policy
 	return &clone
 }
 

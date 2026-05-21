@@ -17,6 +17,7 @@ type DescriptorRouteSpec struct {
 	Method     string
 	Binding    Binding
 	Timeout    string
+	Auth       *AuthPolicy
 	Response   *ResponsePolicy
 }
 
@@ -59,6 +60,7 @@ func NewDescriptorRoute(spec DescriptorRouteSpec) (RouteMeta, error) {
 		},
 		Binding:  spec.Binding,
 		Timeout:  spec.Timeout,
+		Auth:     cloneAuthPolicy(spec.Auth),
 		Response: cloneResponsePolicy(spec.Response),
 	}
 	if err := route.Validate(); err != nil {

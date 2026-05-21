@@ -80,6 +80,22 @@ func TestNewGatewayPublicationRawResponse(t *testing.T) {
 	}
 }
 
+func TestNewGatewayPublicationPublicRoute(t *testing.T) {
+	routes, _, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "user",
+		File:    testUserFile(t),
+		Routes: []GatewayRouteSpec{
+			GET("GetUser", "/v1/users/{id}").Path("id", "id").Public(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if routes[0].Auth == nil || !routes[0].Auth.Public {
+		t.Fatalf("auth policy = %#v", routes[0].Auth)
+	}
+}
+
 func containsJSONField(data []byte, field string) bool {
 	var object map[string]any
 	if err := json.Unmarshal(data, &object); err != nil {

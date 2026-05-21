@@ -257,6 +257,20 @@ Service code declares the explicit public Gateway path such as
 prefix. If an application wants a prefix such as `/payment`, declare it
 explicitly in the route path.
 
+If Gateway authentication is enabled, dynamic routes are authenticated by
+default. Routes that intentionally belong to the authentication whitelist must
+opt out in the service-owned route declaration:
+
+```go
+gatewaymeta.POST("Authenticate", "/v1/auth/authenticate").
+	Body("*").
+	Public()
+```
+
+This publishes `auth.public=true` on the route metadata. Keep whitelist
+ownership with the service route contract rather than a separate Gateway config
+path list.
+
 Ordinary routes use the Gateway JSON response envelope. If a service needs to
 return HTML, CSV, PDF, plain text, or another browser/file-like response, declare
 the route as raw output:

@@ -27,6 +27,14 @@ func TestRouteMetaValidateRejectsRawResponseWithoutBody(t *testing.T) {
 	}
 }
 
+func TestRouteMetaAllowsPublicAuthPolicy(t *testing.T) {
+	route := testRoute("api.test.v1")
+	route.Auth = &AuthPolicy{Public: true}
+	if err := route.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
 func testRoute(descriptorID string) RouteMeta {
 	return RouteMeta{
 		ID:      "test.get",

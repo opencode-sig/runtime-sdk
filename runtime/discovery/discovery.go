@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"time"
 
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
@@ -17,6 +18,19 @@ const (
 type DiscoveryEvent struct {
 	Type     EventType
 	Instance registry.ServiceInstance
+}
+
+type WatchStatus struct {
+	Service       string
+	Running       bool
+	Healthy       bool
+	Stale         bool
+	LastSyncedAt  time.Time
+	LastEventAt   time.Time
+	LastError     string
+	Revision      int64
+	InstanceCount int
+	Reconnects    uint64
 }
 
 // Discovery abstracts service discovery.

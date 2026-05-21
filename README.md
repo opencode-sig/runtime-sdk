@@ -103,6 +103,19 @@ service-name prefix. Gateways should forward by the published
 `RouteMeta.GRPC.Service` and `RouteMeta.GRPC.FullMethod`, not by parsing URL
 prefixes.
 
+Route-level authentication whitelist behavior is also part of route metadata.
+When a Gateway enables authentication, dynamic routes should require
+authentication by default. A service must opt out explicitly with `Public()`:
+
+```go
+gatewaymeta.POST("Authenticate", "/v1/auth/authenticate").
+    Body("*").
+    Public()
+```
+
+Gateway implementations should read `RouteMeta.Auth.Public` and must not keep a
+separate path-pattern whitelist in Gateway config.
+
 Ordinary Gateway routes use the application's standard JSON response envelope.
 Routes that need browser-renderable or file-like output must opt in explicitly:
 

@@ -28,6 +28,9 @@
 - 服务声明 Gateway 路由时必须写显式公网网关路径。`runtime/gatewaymeta`
   只规范化斜杠，不会自动添加服务名前缀。Gateway 应根据元数据转发，
   不应从 URL 前缀反推服务名。
+- 路由认证白名单属于声明式 metadata。服务拥有 public 路由时必须通过
+  `runtime/gatewaymeta.Public` 标记；Gateway 启用认证时，非 public 动态
+  路由应默认需要认证，且不应维护独立 path 白名单。
 - Gateway 响应行为默认由应用网关包标准 JSON envelope。浏览器可直接渲染
   或文件型 raw 输出属于 Gateway 路由契约，必须通过
   `runtime/gatewaymeta.RawResponse` 显式声明。Gateway 实现应基于 protobuf

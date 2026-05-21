@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added route-level Gateway authentication whitelist metadata through
+  `GatewayRouteSpec.Public` and `RouteMeta.Auth.Public`.
 - Added explicit Gateway raw response metadata for browser-renderable and
   file-like outputs through `GatewayRouteSpec.RawResponse`, `RawBody`,
   `RawStatus`, and `RawHeaders`.

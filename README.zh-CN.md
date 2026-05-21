@@ -92,6 +92,18 @@ Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`�
 应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
 转发，而不是从 URL 前缀解析服务名。
 
+路由级认证白名单也属于 route metadata。Gateway 启用认证时，动态路由默认
+应该需要认证；服务必须通过 `Public()` 显式声明白名单路由：
+
+```go
+gatewaymeta.POST("Authenticate", "/v1/auth/authenticate").
+    Body("*").
+    Public()
+```
+
+Gateway 实现应读取 `RouteMeta.Auth.Public`，不应在 Gateway 配置中维护独立
+path pattern 白名单。
+
 普通 Gateway 路由默认由应用网关包标准 JSON envelope。需要浏览器直接渲染
 或文件型输出的路由必须显式声明 raw response：
 

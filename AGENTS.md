@@ -78,6 +78,7 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - `GatewayRouteSpec.Query(param, field)`。
 - `GatewayRouteSpec.Body(value)`。
 - `GatewayRouteSpec.Timeout(value)`。
+- `GatewayRouteSpec.Public()`：显式声明该路由属于认证白名单；Gateway 启用认证时应跳过 Authenticator。
 - `GatewayRouteSpec.RawResponse(contentType)`：显式声明该路由返回原始 HTTP 内容，不走 JSON envelope。
 - `GatewayRouteSpec.RawBody(field)` / `RawStatus(field)` / `RawHeaders(field)`：按需覆盖 raw response 使用的 protobuf 字段名。
 - `GatewayDescriptorSet(files...)`。
@@ -91,6 +92,7 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - 如果应用需要 `/payment`、`/admin` 等业务前缀，应在 route path 中显式声明。
 - Gateway 应根据 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod` 转发，不应从 URL 前缀反推服务名。
 - descriptor id 默认使用 proto package，要求 proto package 稳定。
+- 路由认证白名单必须通过 `Public()` 写入 route metadata。Gateway 不应维护独立 path whitelist；未声明 public 的动态路由在 Gateway 启用认证时默认需要认证。
 - 默认响应策略是不生成 `response` 元数据，并由 Gateway 包标准 JSON envelope。
 - 需要 HTML、CSV、PDF、纯文本等浏览器或文件型输出时，服务必须显式调用 `RawResponse(contentType)`，由 Gateway 按 `response.raw` 直接写 HTTP body。
 - Gateway 不应根据 response message 中的字段名、方法名或 content-type 猜测 raw 输出。
@@ -409,6 +411,7 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 - `Query("page", "page")`：把 query 参数 `page` 写入 request 的 `page` 字段。
 - `Body("*")`：把完整 JSON body 映射到 request message。
 - `Timeout("3s")`：设置单路由上游 gRPC 调用超时。为空时由 Gateway fallback，SDK 默认 fallback 为 3s。
+- `Public()`：声明该路由是认证白名单。Gateway 启用认证时跳过 Authenticator；未声明 public 的动态路由默认需要认证。
 
 路由 ID 默认由 service 和 RPC method 推导，例如 `payment.get`。如果路由已经对外发布并被外部系统依赖，可以显式设置 `GatewayRouteSpec.ID` 以维持兼容。
 
@@ -666,6 +669,16 @@ runtime:
 }
 ```
 
+调用 `Public()` 的路由会额外发布：
+
+```json
+{
+  "auth": {
+    "public": true
+  }
+}
+```
+
 Gateway 消费方应：
 
 - 从 `metadata.routes_prefix` 加载 route metadata。
@@ -673,6 +686,7 @@ Gateway 消费方应：
 - 使用 `full_method` 和 dynamicpb 发起泛化 gRPC 调用。
 - 使用 `binding` 把 HTTP path/query/body 映射到 protobuf request。
 - 使用 discovery 解析 `grpc.service` 对应实例。
+- 使用 `auth.public` 判断路由是否属于认证白名单。Gateway 启用认证时，只有 `auth.public=true` 的路由跳过认证，其他动态路由默认需要认证。
 
 ## Registry 和 Discovery 约定
 

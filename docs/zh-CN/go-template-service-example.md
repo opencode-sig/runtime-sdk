@@ -204,6 +204,18 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 服务只声明 HTTP method/path、RPC method 和参数绑定关系。`runtime-sdk` 会从 protobuf descriptor 推导 full method、request type、response type 和 descriptor id。
 服务代码声明的是显式公网网关路径，例如 `/v1/payments/{id}`；SDK 只规范化斜杠，不会自动添加服务名前缀。如果应用需要 `/payment` 这类前缀，应在 route path 中显式声明。
 
+如果 Gateway 启用认证，动态路由默认需要认证。确实属于认证白名单的路由
+必须在服务自己的路由声明中显式 opt out：
+
+```go
+gatewaymeta.POST("Authenticate", "/v1/auth/authenticate").
+	Body("*").
+	Public()
+```
+
+这会在 route metadata 中发布 `auth.public=true`。白名单归属于服务路由契约，
+不要在 Gateway 配置里维护独立 path 列表。
+
 普通路由默认走 Gateway JSON response envelope。如果服务需要返回 HTML、CSV、
 PDF、纯文本或其他浏览器/文件型响应，应显式声明 raw output：
 
