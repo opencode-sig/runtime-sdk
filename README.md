@@ -10,6 +10,7 @@ The SDK owns runtime concerns that should not leak into business code:
 - structured logging with context correlation
 - application error wrapping and gRPC business errors
 - health, metrics, and tracing helpers
+- authentication contract and identity propagation helpers
 - infrastructure client configuration for etcd, MySQL, Redis, and Kafka
 - lifecycle components
 - config, registry, discovery, control command, and Gateway metadata contracts
@@ -97,6 +98,23 @@ Managed services can also resolve other services by name through
 userClient, err := servicekit.Client(ctx.Clients, reqCtx, "user", userv1.NewUserServiceClient)
 ```
 
+### Runtime Logging Identity
+
+`servicekit` injects runtime identity fields into the logger passed to service
+initializers. Logs emitted through `ctx.Logger` automatically include:
+
+```text
+runtime_service  logical service name from the service spec
+runtime_mode     distributed, monolith, or hybrid
+instance_id      registry instance id for the current service instance
+```
+
+Request-scoped logs should pass the request context to the SDK logger. The
+logger adds correlation fields such as `request_id`, `client_ip`, `trace_id`,
+and `user_id` from context values or gRPC metadata. `instance_id` is reserved
+for the current log producer; use `target_instance_id` when recording an
+operation that targets another instance.
+
 Gateway route specs use explicit public Gateway paths, for example
 `/v1/payments/{id}`. `runtime/gatewaymeta` normalizes slashes but does not add a
 service-name prefix. Gateways should forward by the published
@@ -115,6 +133,23 @@ gatewaymeta.POST("Authenticate", "/v1/auth/authenticate").
 
 Gateway implementations should read `RouteMeta.Auth.Public` and must not keep a
 separate path-pattern whitelist in Gateway config.
+
+The SDK owns the cross-service authentication contract. A Gateway should extract
+credentials through `security/authn`, call the Auth gRPC service through
+`security/authn/grpcauth`, and propagate only Gateway-issued identity metadata
+to downstream services:
+
+```text
+Authorization: Bearer <token> -> credential_type=bearer
+Authorization: Basic <value>  -> credential_type=basic
+X-API-Key: <api-key>          -> credential_type=api_key
+apitoken: <legacy-api-token>  -> credential_type=api_key
+```
+
+Auth services implement `protobuf/security/v1.AuthService`. Business services
+must not parse credentials or call Auth directly; they should read identity from
+metadata such as `x-auth-subject`, `x-tenant-id`, and safe
+`x-auth-attr-*` values.
 
 Ordinary Gateway routes use the application's standard JSON response envelope.
 Routes that need browser-renderable or file-like output must opt in explicitly:

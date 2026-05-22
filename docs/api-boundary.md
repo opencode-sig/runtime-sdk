@@ -14,6 +14,11 @@ do not know anything about a specific application repository.
 - `runtime/discovery`, `runtime/registry`, `runtime/grpcclient`: service lookup,
   registration, and gRPC client connection management.
 - `runtime/gatewaymeta`: Gateway route and descriptor metadata contracts.
+- `security/authn`: authentication request, decision, credential extraction,
+  identity context, and identity metadata helpers.
+- `security/authn/grpcauth`: gRPC adapter for calling the SDK security Auth
+  service through runtime discovery.
+- `protobuf/security/v1`: application-neutral Auth gRPC service contract.
 - `observability`: generic health, metrics, and tracing helpers.
 - `infra`: optional constructors and configuration objects for common
   infrastructure clients.
@@ -44,6 +49,19 @@ in a release note.
   public route must mark it with `runtime/gatewaymeta.Public`; Gateway
   implementations should default to authentication for non-public dynamic
   routes when auth is enabled and must not keep a separate path whitelist.
+- Gateway implementations should authenticate through `security/authn` and
+  `security/authn/grpcauth` instead of importing an application-local Auth
+  protobuf contract. Auth rejection should be represented by
+  `AuthenticateResponse.allowed=false`; gRPC errors are reserved for transport
+  or infrastructure failures.
+- Business services must not parse credentials or depend on Auth service
+  internals. They should read Gateway-issued identity metadata such as
+  `x-auth-subject`, `x-tenant-id`, and safe `x-auth-attr-*` values.
+- `servicekit` may attach runtime log identity fields such as
+  `runtime_service`, `runtime_mode`, and `instance_id` to the logger it passes
+  into service initialization. These fields describe the current log producer
+  and must not encode application-specific business identity. Operations aimed
+  at another instance should use `target_instance_id`.
 - Gateway response behavior defaults to the application JSON envelope.
   Browser-renderable or file-like raw output is part of the Gateway route
   contract and must be declared through `runtime/gatewaymeta.RawResponse`.

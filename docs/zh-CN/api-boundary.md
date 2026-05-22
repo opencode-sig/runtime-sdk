@@ -10,6 +10,9 @@
 - `runtime/control`：rebuild/restart 控制命令契约和命令存储。
 - `runtime/discovery`、`runtime/registry`、`runtime/grpcclient`：服务发现、注册和 gRPC client 连接管理。
 - `runtime/gatewaymeta`：Gateway 路由元数据和 protobuf descriptor 发布辅助能力。
+- `security/authn`：认证请求、认证决策、凭证提取、身份上下文和身份 metadata 辅助能力。
+- `security/authn/grpcauth`：通过 runtime discovery 调用 SDK security Auth 服务的 gRPC 适配器。
+- `protobuf/security/v1`：应用无关的 Auth gRPC 服务契约。
 - `observability`：通用健康检查、指标和 tracing 辅助能力。
 - `infra`：常见基础设施 client 的可选构造器和配置对象。
 - `logger`、`rpcerror`、`apperror`：独立的横切能力。
@@ -31,6 +34,17 @@
 - 路由认证白名单属于声明式 metadata。服务拥有 public 路由时必须通过
   `runtime/gatewaymeta.Public` 标记；Gateway 启用认证时，非 public 动态
   路由应默认需要认证，且不应维护独立 path 白名单。
+- Gateway 实现应通过 `security/authn` 和 `security/authn/grpcauth`
+  完成认证，而不是引用应用本地 Auth protobuf 契约。Auth 拒绝应通过
+  `AuthenticateResponse.allowed=false` 表达；gRPC error 只表示 transport
+  或基础设施失败。
+- 业务服务不能解析 credential，也不能依赖 Auth 服务内部实现。业务服务
+  只应读取 Gateway 生成的 `x-auth-subject`、`x-tenant-id` 和安全的
+  `x-auth-attr-*` 等身份 metadata。
+- `servicekit` 可以向服务初始化上下文中的 logger 注入
+  `runtime_service`、`runtime_mode`、`instance_id` 等运行时日志身份字段。
+  这些字段只描述当前产生日志的实例，不能承载应用业务身份。日志描述被操作的
+  其他实例时应使用 `target_instance_id`。
 - Gateway 响应行为默认由应用网关包标准 JSON envelope。浏览器可直接渲染
   或文件型 raw 输出属于 Gateway 路由契约，必须通过
   `runtime/gatewaymeta.RawResponse` 显式声明。Gateway 实现应基于 protobuf

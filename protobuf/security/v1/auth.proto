@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package runtime.security.v1;
+
+option go_package = "github.com/opencode-sig/runtime-sdk/protobuf/security/v1;securityv1";
+
+service AuthService {
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+}
+
+message AuthenticateRequest {
+  string credential_type = 1;
+  string credential = 2;
+  RequestContext context = 3;
+}
+
+message RequestContext {
+  string request_id = 1;
+  string route_id = 2;
+  string http_method = 3;
+  string http_path = 4;
+  string client_ip = 5;
+  string user_agent = 6;
+  map<string, string> headers = 7;
+}
+
+message AuthenticateResponse {
+  bool allowed = 1;
+  string reason = 2;
+  Identity identity = 3;
+}
+
+message Identity {
+  string subject = 1;
+  string subject_type = 2;
+  string tenant_id = 3;
+  string display_name = 4;
+  map<string, string> attributes = 5;
+  int64 expires_at_unix = 6;
+}
