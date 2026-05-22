@@ -208,7 +208,7 @@ func rebuildFields(logCtx RebuildLogContext, fields ...zap.Field) []zap.Field {
 		base = append(base, logger.String("command", logCtx.Command))
 	}
 	if logCtx.InstanceID != "" {
-		base = append(base, logger.String("instance_id", logCtx.InstanceID))
+		base = append(base, logger.String("target_instance_id", logCtx.InstanceID))
 	}
 	return append(base, fields...)
 }

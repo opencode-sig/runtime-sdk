@@ -59,6 +59,7 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 	if strings.TrimSpace(cfg.Config.Service.Name) == "" {
 		cfg.Config.Service.Name = spec.Name
 	}
+	cfg.Logger = loggerWithRuntimeIdentity(cfg.Logger, cfg.Config, spec, cfg.RuntimeMode)
 	configs := cfg.Configs
 	closeConfigsOnError := false
 	defer func() {

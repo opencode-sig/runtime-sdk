@@ -12,10 +12,7 @@ func ServiceIdentity(cfg Config) (string, string, error) {
 	if name == "" {
 		return "", "", fmt.Errorf("service name is required")
 	}
-	address := strings.TrimSpace(cfg.Service.AdvertiseGRPCAddr)
-	if address == "" {
-		address = strings.TrimSpace(cfg.Service.GRPCAddr)
-	}
+	address := serviceAddress(cfg)
 	if address == "" {
 		return "", "", fmt.Errorf("service %s advertise grpc addr is required", name)
 	}

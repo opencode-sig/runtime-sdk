@@ -164,7 +164,7 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 					logger.String("command", command.Command),
 					logger.Module(logCtx.Module),
 					logger.String("command_id", logCtx.CommandID),
-					logger.String("instance_id", logCtx.InstanceID),
+					logger.String("target_instance_id", logCtx.InstanceID),
 				), logger.ErrorFields(err)...)...)
 			}
 			return
@@ -175,7 +175,7 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 				logger.String("command", command.Command),
 				logger.Module(logCtx.Module),
 				logger.String("command_id", logCtx.CommandID),
-				logger.String("instance_id", logCtx.InstanceID),
+				logger.String("target_instance_id", logCtx.InstanceID),
 				logger.String("reason", reason),
 			)
 		}

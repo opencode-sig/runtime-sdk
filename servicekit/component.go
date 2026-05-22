@@ -34,10 +34,7 @@ func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig) error {
 
 func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig) error {
 	service := cfg.Config.Service
-	address := strings.TrimSpace(service.AdvertiseGRPCAddr)
-	if address == "" {
-		address = service.GRPCAddr
-	}
+	address := serviceAddress(cfg.Config)
 	if address == "" {
 		return fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
 	}
