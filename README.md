@@ -32,58 +32,35 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
         },
         GatewayPublication: paymentbootstrap.GatewayPublication,
     },
-    LoadConfig: loadConfig,
+    LoadConfig: servicekit.ManagedConfigLoader("configs", "service.yaml"),
 })
 ```
 
-`LoadConfig` is owned by the caller. It can load local files, etcd-backed
-configuration, or any deployment-specific source, then return a `servicekit.Config`.
-Service initialization code can read shared config through
+`ManagedConfigLoader` reads a local bootstrap config first. File-mode configs are
+used directly. Etcd-mode bootstrap configs are used to load the managed
+`servicekit.Config` from the configured config center. When
+`runtime.config.root` is empty for file-mode configs, the SDK fills it with the
+loader root so service initialization code can read shared config through
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` with the same logical
-keys in file and etcd modes. In file mode, set `cfg.Runtime.Config.Root` before
-returning the config so `servicekit.Configs` can locate the config root.
+keys in file and etcd modes.
 
-### File Config
-
-```go
-func loadFileConfig(ctx context.Context, root string, key string) (servicekit.Config, error) {
-    provider := runtimeconfig.NewFileProvider(root)
-    data, err := provider.Load(ctx, key)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    cfg, err := runtimeconfig.Decode[servicekit.Config](data)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    if cfg.Runtime.Config.Root == "" {
-        cfg.Runtime.Config.Root = root
-    }
-    return cfg, nil
-}
-```
+Callers can still provide a custom `LoadConfig` for deployment-specific config
+sources.
 
 ### Etcd Config And Rebuild
 
 Use a small local bootstrap file to decide whether the service should load its
-managed config from etcd. When the returned config uses an etcd config source,
-`servicekit.Run` starts a control watcher and applies rebuild/restart commands
-published through `runtime/control`.
+managed config from etcd. The managed config should also declare
+`runtime.config.provider: etcd` when the service should receive process control
+rebuild/restart commands. When the returned config uses an etcd config source,
+`servicekit.Run` starts a control watcher and applies commands published
+through `runtime/control`.
 
 ```go
-func loadManagedConfig(ctx context.Context, bootstrap servicekit.Config) (servicekit.Config, error) {
-    store, ok := bootstrap.EtcdConfigStore()
-    if !ok {
-        return bootstrap, nil
-    }
-    defer func() { _ = store.Close() }()
-
-    data, err := store.Load(ctx, bootstrap.Runtime.Config.Key)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    return runtimeconfig.Decode[servicekit.Config](data)
-}
+loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+    Root: "configs",
+    Key:  "bootstrap.yaml",
+})
 ```
 
 For a complete external microservice example, see

@@ -6,7 +6,7 @@ do not know anything about a specific application repository.
 ## Public Packages
 
 - `servicekit`: managed gRPC service entrypoint and service lifecycle
-  contract.
+  contract, including the standard bootstrap/managed config loader.
 - `runtime/component`: generic lifecycle components for HTTP, gRPC, close hooks,
   and registry registration.
 - `runtime/config`: configuration store contracts and etcd-backed store.

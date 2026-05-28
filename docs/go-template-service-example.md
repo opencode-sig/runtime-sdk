@@ -441,10 +441,8 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 
 	"github.com/acme/payment-service/internal/bootstrap"
-	runtimeconfig "github.com/opencode-sig/runtime-sdk/runtime/config"
 	"github.com/opencode-sig/runtime-sdk/servicekit"
 )
 
@@ -460,34 +458,19 @@ func main() {
 	}
 
 	err = servicekit.Run(ctx, servicekit.RunOptions{
-		Spec: spec,
-		LoadConfig: func(ctx context.Context, service string) (servicekit.Config, error) {
-			return loadConfig(ctx, *configRoot, *configKey)
-		},
+		Spec:       spec,
+		LoadConfig: servicekit.ManagedConfigLoader(*configRoot, *configKey),
 	})
 	if err != nil {
 		panic(err)
 	}
 }
-
-func loadConfig(ctx context.Context, root string, key string) (servicekit.Config, error) {
-	provider := runtimeconfig.NewFileProvider(root)
-	data, err := provider.Load(ctx, key)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("load config: %w", err)
-	}
-	cfg, err := runtimeconfig.Decode[servicekit.Config](data)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("decode config: %w", err)
-	}
-	if cfg.Runtime.Config.Root == "" {
-		cfg.Runtime.Config.Root = root
-	}
-	return cfg, nil
-}
 ```
 
-This loader starts from a local file and is enough for file-mode development.
+`ManagedConfigLoader` starts from a local bootstrap config. File-mode configs are
+used directly. Etcd-mode bootstrap configs are used to load the managed
+`servicekit.Config` from the configured config center. If `runtime.config.root`
+is empty for a file-mode config, the SDK fills it with `configRoot`.
 
 ## Etcd Managed Config
 
@@ -558,60 +541,29 @@ settings:
   payment_provider: sandbox
 ```
 
-Use this loader when the service should be managed by runtime-admin:
+Use the same standard loader when the service should be managed by
+runtime-admin:
 
 ```go
-func loadManagedConfig(ctx context.Context, root string, bootstrapKey string) (servicekit.Config, error) {
-	fileProvider := runtimeconfig.NewFileProvider(root)
-	bootstrapData, err := fileProvider.Load(ctx, bootstrapKey)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("load bootstrap config: %w", err)
-	}
-	bootstrap, err := runtimeconfig.Decode[servicekit.Config](bootstrapData)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("decode bootstrap config: %w", err)
-	}
-	if bootstrap.Runtime.Config.Root == "" {
-		bootstrap.Runtime.Config.Root = root
-	}
-	if bootstrap.Runtime.Config.Provider != "etcd" {
-		return bootstrap, nil
-	}
-
-	etcdProvider, ok := bootstrap.EtcdConfigStore()
-	if !ok {
-		return bootstrap, nil
-	}
-	defer func() { _ = etcdProvider.Close() }()
-
-	data, err := etcdProvider.Load(ctx, bootstrap.Runtime.Config.Key)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("load etcd config: %w", err)
-	}
-	cfg, err := runtimeconfig.Decode[servicekit.Config](data)
-	if err != nil {
-		return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
-	}
-	if cfg.Runtime.Config.Root == "" && (cfg.Runtime.Config.Provider == "" || cfg.Runtime.Config.Provider == "file") {
-		cfg.Runtime.Config.Root = root
-	}
-	return cfg, nil
-}
+loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+	Root: "configs",
+	Key:  "bootstrap.yaml",
+})
 ```
 
 Then wire it into `servicekit.Run`:
 
 ```go
 err = servicekit.Run(ctx, servicekit.RunOptions{
-	Spec: spec,
-	LoadConfig: func(ctx context.Context, service string) (servicekit.Config, error) {
-		return loadManagedConfig(ctx, "configs", "bootstrap.yaml")
-	},
+	Spec:       spec,
+	LoadConfig: loader,
 })
 ```
 
 In etcd mode, `servicekit.Run` uses the returned config for the DataPlane and
 calls `LoadConfig` again whenever a runtime-admin rebuild command is received.
+The managed config should keep `runtime.config.provider: etcd` when the process
+should keep watching runtime-admin commands.
 
 ## Service Private Settings
 

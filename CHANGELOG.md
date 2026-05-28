@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added `servicekit.NewConfigLoader` and `ManagedConfigLoader` as the standard
+  bootstrap/managed config loader for external services.
 - Added route-level Gateway authentication whitelist metadata through
   `GatewayRouteSpec.Public` and `RouteMeta.Auth.Public`.
 - Added explicit Gateway raw response metadata for browser-renderable and

@@ -30,54 +30,28 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
         },
         GatewayPublication: paymentbootstrap.GatewayPublication,
     },
-    LoadConfig: loadConfig,
+    LoadConfig: servicekit.ManagedConfigLoader("configs", "service.yaml"),
 })
 ```
 
-`LoadConfig` 由接入方实现。它可以从本地文件、etcd 配置中心或任意部署侧配置源加载配置，并返回 `servicekit.Config`。
-如果服务需要在 `Init` / `InitDistributed` 中读取全局配置，可以通过
+`ManagedConfigLoader` 会先读取本地 bootstrap config。file 模式直接使用本地配置；
+etcd 模式会基于 bootstrap 中的 etcd 信息读取托管的 `servicekit.Config`。
+当 file 模式配置的 `runtime.config.root` 为空时，SDK 会自动补齐为 loader root，
+这样服务在 `Init` / `InitDistributed` 中可以通过
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 使用与 file / etcd
-一致的逻辑 key。文件模式下建议在返回配置前设置 `cfg.Runtime.Config.Root`，
-让 `servicekit.Configs` 能定位配置根目录。
+一致的逻辑 key。
 
-### 文件配置
-
-```go
-func loadFileConfig(ctx context.Context, root string, key string) (servicekit.Config, error) {
-    provider := runtimeconfig.NewFileProvider(root)
-    data, err := provider.Load(ctx, key)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    cfg, err := runtimeconfig.Decode[servicekit.Config](data)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    if cfg.Runtime.Config.Root == "" {
-        cfg.Runtime.Config.Root = root
-    }
-    return cfg, nil
-}
-```
+接入方仍然可以为特殊部署环境提供自定义 `LoadConfig`。
 
 ### etcd 配置与 rebuild
 
-推荐使用一个很小的本地 bootstrap 配置决定服务是否从 etcd 加载托管配置。当返回的配置启用了 etcd 配置源时，`servicekit.Run` 会启动 control watcher，并响应通过 `runtime/control` 发布的 rebuild/restart 命令。
+推荐使用一个很小的本地 bootstrap 配置决定服务是否从 etcd 加载托管配置。如果服务需要接收 process control rebuild/restart 命令，托管配置中也应声明 `runtime.config.provider: etcd`。当最终返回的配置启用了 etcd 配置源时，`servicekit.Run` 会启动 control watcher，并响应通过 `runtime/control` 发布的命令。
 
 ```go
-func loadManagedConfig(ctx context.Context, bootstrap servicekit.Config) (servicekit.Config, error) {
-    store, ok := bootstrap.EtcdConfigStore()
-    if !ok {
-        return bootstrap, nil
-    }
-    defer func() { _ = store.Close() }()
-
-    data, err := store.Load(ctx, bootstrap.Runtime.Config.Key)
-    if err != nil {
-        return servicekit.Config{}, err
-    }
-    return runtimeconfig.Decode[servicekit.Config](data)
-}
+loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+    Root: "configs",
+    Key:  "bootstrap.yaml",
+})
 ```
 
 完整外部服务接入示例见 [docs/zh-CN/go-template-service-example.md](docs/zh-CN/go-template-service-example.md)。可运行样例位于 [examples/go-template-payment](examples/go-template-payment)。
