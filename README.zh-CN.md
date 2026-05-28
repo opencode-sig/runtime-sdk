@@ -30,12 +30,15 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
         },
         GatewayPublication: paymentbootstrap.GatewayPublication,
     },
-    LoadConfig: servicekit.ManagedConfigLoader("configs", "service.yaml"),
+    LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+        Root: ".",
+    }),
 })
 ```
 
-`ManagedConfigLoader` 会先读取本地 bootstrap config。file 模式直接使用本地配置；
-etcd 模式会基于 bootstrap 中的 etcd 信息读取托管的 `servicekit.Config`。
+标准 loader 默认读取 `configs/service/<service>.yaml`。file 模式直接使用本地配置；
+etcd 模式会从配置中心读取托管配置；如果 etcd 中的 managed key 不存在，SDK 会使用本地完整服务配置通过 `PutIfAbsent` 自动 seed 到 etcd，然后再从 etcd 读取最终配置。已有 etcd 配置不会被覆盖。
+
 当 file 模式配置的 `runtime.config.root` 为空时，SDK 会自动补齐为 loader root，
 这样服务在 `Init` / `InitDistributed` 中可以通过
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 使用与 file / etcd
@@ -45,14 +48,16 @@ etcd 模式会基于 bootstrap 中的 etcd 信息读取托管的 `servicekit.Con
 
 ### etcd 配置与 rebuild
 
-推荐使用一个很小的本地 bootstrap 配置决定服务是否从 etcd 加载托管配置。如果服务需要接收 process control rebuild/restart 命令，托管配置中也应声明 `runtime.config.provider: etcd`。当最终返回的配置启用了 etcd 配置源时，`servicekit.Run` 会启动 control watcher，并响应通过 `runtime/control` 发布的命令。
+服务需要从 etcd 加载托管配置时，在 `configs/service/<service>.yaml` 中声明 `runtime.config.provider: etcd`。同一个本地文件也是首次启动时 etcd key 缺失的 seed 来源。本地文件必须是完整服务配置，并包含匹配的 `service.name`、`service.grpc_addr`、`runtime.config.etcd.endpoints` 和 `runtime.config.etcd.prefix`。
 
 ```go
 loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
-    Root: "configs",
-    Key:  "bootstrap.yaml",
+    Root: ".",
+    // Key 为空时默认使用 configs/service/<service>.yaml。
 })
 ```
+
+默认 managed key 必须位于 `configs/service/` 命名空间下。如果平台使用其他逻辑命名空间，可以覆盖 `ManagedConfigPrefix`。如果服务进程只能读配置中心，可以设置 `DisableEtcdAutoSeed` 关闭自动 seed。
 
 完整外部服务接入示例见 [docs/zh-CN/go-template-service-example.md](docs/zh-CN/go-template-service-example.md)。可运行样例位于 [examples/go-template-payment](examples/go-template-payment)。
 

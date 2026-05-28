@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	configRoot := flag.String("config-root", "configs", "directory that contains the bootstrap config")
-	configKey := flag.String("config-key", "service.yaml", "bootstrap config key")
+	configRoot := flag.String("config-root", ".", "project root that contains configs/service")
+	configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -19,8 +19,11 @@ func main() {
 		panic(err)
 	}
 	if err := servicekit.Run(ctx, servicekit.RunOptions{
-		Spec:       spec,
-		LoadConfig: servicekit.ManagedConfigLoader(*configRoot, *configKey),
+		Spec: spec,
+		LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+			Root: *configRoot,
+			Key:  *configKey,
+		}),
 	}); err != nil {
 		panic(err)
 	}

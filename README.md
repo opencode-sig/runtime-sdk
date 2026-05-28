@@ -32,15 +32,20 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
         },
         GatewayPublication: paymentbootstrap.GatewayPublication,
     },
-    LoadConfig: servicekit.ManagedConfigLoader("configs", "service.yaml"),
+    LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+        Root: ".",
+    }),
 })
 ```
 
-`ManagedConfigLoader` reads a local bootstrap config first. File-mode configs are
-used directly. Etcd-mode bootstrap configs are used to load the managed
-`servicekit.Config` from the configured config center. When
-`runtime.config.root` is empty for file-mode configs, the SDK fills it with the
-loader root so service initialization code can read shared config through
+The standard loader reads `configs/service/<service>.yaml` by default. File-mode
+configs are used directly. Etcd-mode configs are read from the configured config
+center; if the managed key does not exist, the SDK seeds etcd with the local
+complete service config by using `PutIfAbsent`, then reads the final config from
+etcd. Existing etcd config is never overwritten.
+
+When `runtime.config.root` is empty for file-mode configs, the SDK fills it with
+the loader root so service initialization code can read shared config through
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` with the same logical
 keys in file and etcd modes.
 
@@ -49,19 +54,23 @@ sources.
 
 ### Etcd Config And Rebuild
 
-Use a small local bootstrap file to decide whether the service should load its
-managed config from etcd. The managed config should also declare
-`runtime.config.provider: etcd` when the service should receive process control
-rebuild/restart commands. When the returned config uses an etcd config source,
-`servicekit.Run` starts a control watcher and applies commands published
-through `runtime/control`.
+Use `runtime.config.provider: etcd` in `configs/service/<service>.yaml` when
+the service should load managed config from etcd. The same local file is also
+the first-run seed when the etcd key is missing. The local file must be a
+complete service config and include matching `service.name`, `service.grpc_addr`,
+`runtime.config.etcd.endpoints`, and `runtime.config.etcd.prefix`.
 
 ```go
 loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
-    Root: "configs",
-    Key:  "bootstrap.yaml",
+    Root: ".",
+    // Key defaults to configs/service/<service>.yaml.
 })
 ```
+
+By default the managed key must be under `configs/service/`. Override
+`ManagedConfigPrefix` only when the platform uses a different logical namespace.
+Set `DisableEtcdAutoSeed` when service processes should be read-only against the
+config center.
 
 For a complete external microservice example, see
 [`docs/go-template-service-example.md`](docs/go-template-service-example.md).

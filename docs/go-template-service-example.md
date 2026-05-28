@@ -36,7 +36,7 @@ routes and service discovery.
 ```text
 payment-service/
   cmd/payment/main.go
-  configs/service.yaml
+  configs/service/payment.yaml
   internal/bootstrap/gateway.go
   internal/bootstrap/module.go
   internal/handler/handler.go
@@ -365,7 +365,7 @@ startup should not depend on every downstream service being available.
 
 ## Local File Config
 
-`configs/service.yaml`
+`configs/service/payment.yaml`
 
 ```yaml
 logger:
@@ -384,8 +384,8 @@ logger:
 runtime:
   config:
     provider: file
-    root: configs
-    key: service.yaml
+    root: .
+    key: configs/service/payment.yaml
     etcd:
       endpoints:
         - 127.0.0.1:2379
@@ -447,8 +447,8 @@ import (
 )
 
 func main() {
-	configRoot := flag.String("config-root", "configs", "directory that contains service config")
-	configKey := flag.String("config-key", "service.yaml", "service config file name")
+	configRoot := flag.String("config-root", ".", "project root that contains configs/service")
+	configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -458,8 +458,11 @@ func main() {
 	}
 
 	err = servicekit.Run(ctx, servicekit.RunOptions{
-		Spec:       spec,
-		LoadConfig: servicekit.ManagedConfigLoader(*configRoot, *configKey),
+		Spec: spec,
+		LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+			Root: *configRoot,
+			Key:  *configKey,
+		}),
 	})
 	if err != nil {
 		panic(err)
@@ -467,17 +470,19 @@ func main() {
 }
 ```
 
-`ManagedConfigLoader` starts from a local bootstrap config. File-mode configs are
-used directly. Etcd-mode bootstrap configs are used to load the managed
-`servicekit.Config` from the configured config center. If `runtime.config.root`
-is empty for a file-mode config, the SDK fills it with `configRoot`.
+The standard loader reads `configs/service/<service>.yaml` by default. File-mode
+configs are used directly. Etcd-mode configs are read from the configured config
+center. If the managed key does not exist, the SDK seeds etcd with the local
+complete service config by using `PutIfAbsent`, then reads the final config from
+etcd. Existing etcd config is never overwritten.
 
 ## Etcd Managed Config
 
-For production-managed runtime, keep a small local bootstrap file only to decide
-where the config center is. The actual service config is loaded from etcd.
+For production-managed runtime, keep the complete service config at the standard
+logical key. The local file is also the first-run seed when the etcd key is
+missing.
 
-`configs/bootstrap.yaml`
+`configs/service/payment.yaml`
 
 ```yaml
 runtime:
@@ -541,13 +546,12 @@ settings:
   payment_provider: sandbox
 ```
 
-Use the same standard loader when the service should be managed by
-runtime-admin:
+Use the same standard loader when the service should be managed by runtime-admin:
 
 ```go
 loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
-	Root: "configs",
-	Key:  "bootstrap.yaml",
+	Root: ".",
+	// Key defaults to configs/service/<service>.yaml.
 })
 ```
 
@@ -564,6 +568,13 @@ In etcd mode, `servicekit.Run` uses the returned config for the DataPlane and
 calls `LoadConfig` again whenever a runtime-admin rebuild command is received.
 The managed config should keep `runtime.config.provider: etcd` when the process
 should keep watching runtime-admin commands.
+
+Auto-seeding requires the local file to be a complete service config with
+matching `service.name`, a non-empty `service.grpc_addr`, and explicit
+`runtime.config.etcd.endpoints` plus `runtime.config.etcd.prefix`. The managed
+key must be under `configs/service/` unless `ManagedConfigPrefix` is overridden.
+Set `DisableEtcdAutoSeed` when service processes should only read config center
+values.
 
 ## Service Private Settings
 

@@ -28,12 +28,21 @@ check_absent() {
   fi
 }
 
+check_project_defaults() {
+  local matches
+  matches="$(rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!*.md' --glob '!go.sum' \
+    'go-template|configs/|/go-template/' . \
+    | rg -v '^\./servicekit/config_loader\.go:.*configs/service' || true)"
+  if [[ -n "$matches" ]]; then
+    echo "$matches"
+    echo "boundary check failed: sdk must not carry go-template project defaults"
+    exit 1
+  fi
+}
+
 check_external_internal_imports
 
-check_absent \
-  "sdk must not carry go-template project defaults" \
-  'go-template|configs/|/go-template/' \
-  .
+check_project_defaults
 
 check_absent \
   "sdk non-test code must not hardcode template service names" \

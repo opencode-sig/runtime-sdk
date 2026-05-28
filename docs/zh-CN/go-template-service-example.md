@@ -28,7 +28,7 @@
 ```text
 payment-service/
   cmd/payment/main.go
-  configs/service.yaml
+  configs/service/payment.yaml
   internal/bootstrap/gateway.go
   internal/bootstrap/module.go
   internal/handler/handler.go
@@ -300,8 +300,8 @@ import (
 )
 
 func main() {
-	configRoot := flag.String("config-root", "configs", "directory that contains config")
-	configKey := flag.String("config-key", "service.yaml", "config key")
+	configRoot := flag.String("config-root", ".", "project root that contains configs/service")
+	configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -310,21 +310,23 @@ func main() {
 		panic(err)
 	}
 	if err := servicekit.Run(ctx, servicekit.RunOptions{
-		Spec:       spec,
-		LoadConfig: servicekit.ManagedConfigLoader(*configRoot, *configKey),
+		Spec: spec,
+		LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+			Root: *configRoot,
+			Key:  *configKey,
+		}),
 	}); err != nil {
 		panic(err)
 	}
 }
 ```
 
-`ManagedConfigLoader` 会先读取本地 bootstrap config。file 模式直接使用本地配置；
-etcd 模式会基于 bootstrap 中的 etcd 信息读取托管的 `servicekit.Config`。
-当 file 模式配置的 `runtime.config.root` 为空时，SDK 会自动补齐为 `configRoot`。
+标准 loader 默认读取 `configs/service/<service>.yaml`。file 模式直接使用本地配置；
+etcd 模式会从配置中心读取托管配置。如果 etcd 中的 managed key 不存在，SDK 会使用本地完整服务配置通过 `PutIfAbsent` 自动 seed 到 etcd，然后再从 etcd 读取最终配置；已有 etcd 配置不会被覆盖。当 file 模式配置的 `runtime.config.root` 为空时，SDK 会自动补齐为 `configRoot`。
 
 ## 本地文件配置
 
-`configs/service.yaml`
+`configs/service/payment.yaml`
 
 ```yaml
 logger:
@@ -340,8 +342,8 @@ logger:
 runtime:
   config:
     provider: file
-    root: configs
-    key: service.yaml
+    root: .
+    key: configs/service/payment.yaml
   control:
     commands_prefix: /runtime/control/commands
 
@@ -363,6 +365,21 @@ metadata:
   routes_prefix: /runtime/gateway/routes
   descriptors_prefix: /runtime/gateway/descriptors
 ```
+
+使用 etcd 配置中心时，同一个本地文件也是首次启动的 seed 来源：
+
+```yaml
+runtime:
+  config:
+    provider: etcd
+    key: configs/service/payment.yaml
+    etcd:
+      endpoints:
+        - 127.0.0.1:2379
+      prefix: /runtime/config
+```
+
+如果 `/runtime/config/configs/service/payment.yaml` 不存在，SDK 会在本地配置通过校验后写入该 key。自动 seed 要求本地文件是完整服务配置，且包含匹配的 `service.name`、非空 `service.grpc_addr`、`runtime.config.etcd.endpoints` 和 `runtime.config.etcd.prefix`。默认 managed key 必须位于 `configs/service/` 下；平台使用其他命名空间时可设置 `ManagedConfigPrefix`。服务进程只允许读配置中心时，可设置 `DisableEtcdAutoSeed` 关闭自动 seed。
 
 ## 接收 rebuild 命令
 

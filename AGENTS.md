@@ -49,6 +49,7 @@ runtime-sdk 的核心接入模型是：
 - `RuntimeContext`：普通初始化 hook 可见的上下文。
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
 - `Configs`：按逻辑 key 读取配置中心内容，file / etcd 使用同一套 key 约定，例如 `configs/global/app.yaml`。
+- `NewConfigLoader` / `ManagedConfigLoader`：标准 bootstrap / managed config loader；默认读取 `configs/service/<service>.yaml`，etcd key 缺失时使用本地完整服务配置 `PutIfAbsent` 自动 seed。
 - `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd client。
 - `Clients` / `Client[T]`：按服务名获取 gRPC `ClientConn` 或 typed protobuf client。
 - `DecodeSettings[T]`：从 `Config.Settings` 解码业务私有配置。
@@ -286,7 +287,7 @@ SDK 默认保持 tracing 边界和上下文传播可用，但不强制外部 col
 ```text
 payment-service/
   cmd/payment/main.go
-  configs/service.yaml
+  configs/service/payment.yaml
   internal/bootstrap/gateway.go
   internal/bootstrap/module.go
   internal/handler/handler.go
@@ -477,17 +478,14 @@ package main
 import (
     "context"
     "flag"
-    "fmt"
-    "strings"
 
     "github.com/acme/payment-service/internal/bootstrap"
-    runtimeconfig "github.com/opencode-sig/runtime-sdk/runtime/config"
     "github.com/opencode-sig/runtime-sdk/servicekit"
 )
 
 func main() {
-    configRoot := flag.String("config-root", "configs", "directory that contains config")
-    configKey := flag.String("config-key", "service.yaml", "config key")
+    configRoot := flag.String("config-root", ".", "project root that contains configs/service")
+    configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
     flag.Parse()
 
     spec, err := bootstrap.Module()
@@ -497,54 +495,18 @@ func main() {
 
     if err := servicekit.Run(context.Background(), servicekit.RunOptions{
         Spec: spec,
-        LoadConfig: func(ctx context.Context, service string) (servicekit.Config, error) {
-            return loadConfig(ctx, *configRoot, *configKey)
-        },
+        LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+            Root: *configRoot,
+            Key:  *configKey,
+        }),
     }); err != nil {
         panic(err)
     }
 }
-
-func loadConfig(ctx context.Context, root string, key string) (servicekit.Config, error) {
-    fileProvider := runtimeconfig.NewFileProvider(root)
-    data, err := fileProvider.Load(ctx, key)
-    if err != nil {
-        return servicekit.Config{}, fmt.Errorf("load config: %w", err)
-    }
-    cfg, err := runtimeconfig.Decode[servicekit.Config](data)
-    if err != nil {
-        return servicekit.Config{}, fmt.Errorf("decode config: %w", err)
-    }
-    if cfg.Runtime.Config.Root == "" {
-        cfg.Runtime.Config.Root = root
-    }
-    if !strings.EqualFold(strings.TrimSpace(cfg.Runtime.Config.Provider), "etcd") {
-        return cfg, nil
-    }
-
-    etcdProvider, ok := cfg.EtcdConfigStore()
-    if !ok {
-        return cfg, nil
-    }
-    defer func() { _ = etcdProvider.Close() }()
-
-    data, err = etcdProvider.Load(ctx, cfg.Runtime.Config.Key)
-    if err != nil {
-        return servicekit.Config{}, fmt.Errorf("load etcd config: %w", err)
-    }
-    managed, err := runtimeconfig.Decode[servicekit.Config](data)
-    if err != nil {
-        return servicekit.Config{}, fmt.Errorf("decode etcd config: %w", err)
-    }
-    if managed.Runtime.Config.Root == "" &&
-        (managed.Runtime.Config.Provider == "" || strings.EqualFold(strings.TrimSpace(managed.Runtime.Config.Provider), "file")) {
-        managed.Runtime.Config.Root = root
-    }
-    return managed, nil
-}
 ```
 
 `LoadConfig` 会在初次启动和每次 rebuild 时调用。它必须返回完整的 `servicekit.Config` 快照。
+标准 loader 默认从 `configs/service/<service>.yaml` 读取本地配置。file 模式直接使用本地配置；etcd 模式会从配置中心读取 managed config。如果 etcd key 不存在，SDK 会在本地配置通过校验后通过 `PutIfAbsent` 写入配置中心，然后再从 etcd 读取最终配置。已有 etcd 配置不会被覆盖。
 
 ## `servicekit.Config` 配置规范
 
@@ -564,8 +526,8 @@ logger:
 runtime:
   config:
     provider: file
-    root: configs
-    key: service.yaml
+    root: .
+    key: configs/service/payment.yaml
   control:
     commands_prefix: /runtime/control/commands
 
@@ -597,8 +559,8 @@ settings: {}
 
 - `logger`：SDK logger 配置契约。`logger.NewContextWithConfig` 可按该结构创建 logger；`servicekit.Run` 在 `RunOptions.Logger` 为空时会创建基于 `Spec.Name` 的默认 logger。
 - `runtime.config.provider`：`file` 或 `etcd`。只有 `etcd` 会启用 process control watcher。
-- `runtime.config.root`：文件配置根目录。本地 bootstrap 使用 `--config-root configs` 时可写成 `configs`；`servicekit.Configs` 会把 `configs` 目录规范化为项目根目录，使 `configs/global/app.yaml` 这类逻辑 key 在 file / etcd 下保持一致。
-- `runtime.config.key`：配置逻辑 key。本地文件模式下是文件名或绝对路径；etcd 模式下是 etcd prefix 下的逻辑 key。
+- `runtime.config.root`：文件配置根目录。标准入口默认 `--config-root .`，使 `configs/service/<service>.yaml` 和 `configs/global/app.yaml` 这类逻辑 key 在 file / etcd 下保持一致。
+- `runtime.config.key`：配置逻辑 key。为空时标准 loader 按服务名推导为 `configs/service/<service>.yaml`；etcd 模式下也是 etcd prefix 下的 managed config key。
 - `runtime.config.etcd`：etcd 配置中心 endpoints 和 prefix。
 - `runtime.control.commands_prefix`：控制命令前缀，默认语义为 `/runtime/control/commands/<service>/<timestamp>`。
 - `service.name`：服务名，应与 `servicekit.Spec.Name` 和 Gateway `Service` 保持一致。
@@ -613,13 +575,13 @@ settings: {}
 - `infra`：可选 infra 配置，由 `servicekit.Infra` 按需创建。
 - `settings`：业务私有配置，SDK 不解释，业务用 `DecodeSettings[T]` 解码。
 
-etcd bootstrap 示例：
+etcd managed config 示例：
 
 ```yaml
 runtime:
   config:
     provider: etcd
-    key: services/payment/service.yaml
+    key: configs/service/payment.yaml
     etcd:
       endpoints:
         - 127.0.0.1:2379
@@ -628,7 +590,7 @@ runtime:
     commands_prefix: /runtime/control/commands
 ```
 
-这种模式下，本地文件只需要包含连接配置中心所需的最小信息；最终完整配置由 etcd 中的 `/runtime/config/services/payment/service.yaml` 提供。
+这种模式下，本地 `configs/service/payment.yaml` 应是完整服务配置。最终完整配置由 etcd 中的 `/runtime/config/configs/service/payment.yaml` 提供；如果该 key 不存在，标准 loader 会使用本地完整配置自动 seed。自动 seed 要求本地配置包含匹配的 `service.name`、非空 `service.grpc_addr`、`runtime.config.etcd.endpoints` 和 `runtime.config.etcd.prefix`。
 
 ## Gateway 元数据发布规范
 

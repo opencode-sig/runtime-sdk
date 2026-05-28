@@ -3,7 +3,10 @@
 ## Unreleased
 
 - Added `servicekit.NewConfigLoader` and `ManagedConfigLoader` as the standard
-  bootstrap/managed config loader for external services.
+  bootstrap/managed config loader for external services, including first-run
+  etcd config seeding with `PutIfAbsent`.
+- Removed the older `SeedServiceConfig` helper so service config seeding has a
+  single supported path through `NewConfigLoader`.
 - Added route-level Gateway authentication whitelist metadata through
   `GatewayRouteSpec.Public` and `RouteMeta.Auth.Public`.
 - Added explicit Gateway raw response metadata for browser-renderable and
