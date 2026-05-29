@@ -1,0 +1,8 @@
+service_name: payment
+file_prefix: payment
+level: info
+stacktrace_level: error
+format: json
+enable_stdout: true
+enable_file: false
+caller: true

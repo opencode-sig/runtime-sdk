@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added `servicekit.NewConventionConfigLoader` for go-template-style split
+  service config fragments, including etcd `PutIfAbsent` seeding for missing
+  convention keys.
 - Added optional Elasticsearch and MinIO/S3 infra config and client helpers,
   including `servicekit.Infra` lazy client accessors.
 - Added `servicekit.NewConfigLoader` and `ManagedConfigLoader` as the standard

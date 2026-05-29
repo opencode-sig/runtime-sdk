@@ -1,0 +1,7 @@
+grpc_addr: :9004
+advertise_grpc_addr: 127.0.0.1:9004
+admin_addr: :9104
+advertise_admin_addr: 127.0.0.1:9104
+enable_pprof: false
+settings:
+  status: created

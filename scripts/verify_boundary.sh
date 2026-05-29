@@ -32,7 +32,8 @@ check_project_defaults() {
   local matches
   matches="$(rg -n --glob '!**/*_test.go' --glob '!scripts/**' --glob '!docs/**' --glob '!examples/**' --glob '!*.md' --glob '!go.sum' \
     'go-template|configs/|/go-template/' . \
-    | rg -v '^\./servicekit/config_loader\.go:.*configs/service' || true)"
+    | rg -v '^\./servicekit/config_loader\.go:.*configs/service' \
+    | rg -v '^\./servicekit/convention_config_loader\.go:.*configs/' || true)"
   if [[ -n "$matches" ]]; then
     echo "$matches"
     echo "boundary check failed: sdk must not carry go-template project defaults"

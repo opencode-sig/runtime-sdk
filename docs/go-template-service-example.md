@@ -36,6 +36,10 @@ routes and service discovery.
 ```text
 payment-service/
   cmd/payment/main.go
+  configs/runtime.yaml
+  configs/logger.yaml
+  configs/registry.yaml
+  configs/infra/etcd.yaml
   configs/service/payment.yaml
   internal/bootstrap/gateway.go
   internal/bootstrap/module.go
@@ -365,60 +369,70 @@ startup should not depend on every downstream service being available.
 
 ## Local File Config
 
+The convention loader uses the same split config layout as go-template. Common
+runtime settings live in shared files, while `configs/service/payment.yaml`
+only contains the payment service fragment.
+
+`configs/runtime.yaml`
+
+```yaml
+config:
+  provider: file
+  key: configs/runtime.yaml
+control:
+  commands_prefix: /runtime/control/commands
+metadata:
+  routes_prefix: /runtime/gateway/routes
+  descriptors_prefix: /runtime/gateway/descriptors
+```
+
+`configs/logger.yaml`
+
+```yaml
+service_name: payment
+file_prefix: payment
+level: info
+stacktrace_level: error
+format: json
+enable_stdout: true
+enable_file: true
+caller: true
+```
+
+`configs/registry.yaml`
+
+```yaml
+provider: etcd
+etcd:
+  endpoints:
+    - 127.0.0.1:2379
+  prefix: /runtime/registry
+```
+
+`configs/infra/etcd.yaml`
+
+```yaml
+endpoints:
+  - 127.0.0.1:2379
+dial_timeout: 3s
+```
+
 `configs/service/payment.yaml`
 
 ```yaml
-logger:
-  service_name: payment
-  file_prefix: payment
-  level: info
-  stacktrace_level: error
-  format: json
-  enable_stdout: true
-  enable_file: true
-  caller: true
-  log_dir: ./logs
-  max_age_days: 7
-  file_zone: Local
-
-runtime:
-  config:
-    provider: file
-    root: .
-    key: configs/service/payment.yaml
-    etcd:
-      endpoints:
-        - 127.0.0.1:2379
-      prefix: /configcenter
-  control:
-    commands_prefix: /go-template/control/commands
-
-service:
-  name: payment
-  grpc_addr: :9003
-  advertise_grpc_addr: 127.0.0.1:9003
-  admin_addr: :9103
-  advertise_admin_addr: 127.0.0.1:9103
-  enable_pprof: true
-
-registry:
-  provider: etcd
-  etcd:
-    endpoints:
-      - 127.0.0.1:2379
-    prefix: /go-template/registry
-
-metadata:
-  routes_prefix: /go-template/gateway/routes
-  descriptors_prefix: /go-template/gateway/descriptors
-
+grpc_addr: :9003
+advertise_grpc_addr: 127.0.0.1:9003
+admin_addr: :9103
+advertise_admin_addr: 127.0.0.1:9103
+enable_pprof: true
 settings:
   payment_provider: sandbox
 ```
 
 This file-mode config is useful for local development. It starts the service,
 registers it, and publishes Gateway metadata. It does not enable runtime-admin
-control-command rebuilds because `runtime.config.provider` is `file`.
+control-command rebuilds because `config.provider` in `configs/runtime.yaml` is
+`file`.
 
 Address rules:
 
@@ -447,8 +461,7 @@ import (
 )
 
 func main() {
-	configRoot := flag.String("config-root", ".", "project root that contains configs/service")
-	configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
+	configRoot := flag.String("config-root", ".", "project root that contains configs")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -459,9 +472,8 @@ func main() {
 
 	err = servicekit.Run(ctx, servicekit.RunOptions{
 		Spec: spec,
-		LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+		LoadConfig: servicekit.NewConventionConfigLoader(servicekit.ConventionConfigLoaderOptions{
 			Root: *configRoot,
-			Key:  *configKey,
 		}),
 	})
 	if err != nil {
@@ -470,111 +482,58 @@ func main() {
 }
 ```
 
-The standard loader reads `configs/service/<service>.yaml` by default. File-mode
-configs are used directly. Etcd-mode configs are read from the configured config
-center. If the managed key does not exist, the SDK seeds etcd with the local
-complete service config by using `PutIfAbsent`, then reads the final config from
-etcd. Existing etcd config is never overwritten.
+The convention loader reads `configs/runtime.yaml` as bootstrap, then composes a
+complete `servicekit.Config` from the fixed split keys. `configs/runtime.yaml`
+and `configs/service/<service>.yaml` are required. Logger, registry, and infra
+fragments are optional; missing optional files keep defaults or empty config.
+
+Use `servicekit.NewConfigLoader` only when you intentionally keep a single
+complete `servicekit.Config` file for backward compatibility.
 
 ## Etcd Managed Config
 
-For production-managed runtime, keep the complete service config at the standard
-logical key. The local file is also the first-run seed when the etcd key is
-missing.
-
-`configs/service/payment.yaml`
+For production-managed runtime, switch `configs/runtime.yaml` to etcd mode:
 
 ```yaml
-runtime:
-  config:
-    provider: etcd
-    key: configs/service/payment.yaml
-    etcd:
-      endpoints:
-        - 127.0.0.1:2379
-      prefix: /configcenter
-```
-
-The etcd value at `/configcenter/configs/service/payment.yaml` should contain the
-full `servicekit.Config`:
-
-```yaml
-logger:
-  service_name: payment
-  file_prefix: payment
-  level: info
-  stacktrace_level: error
-  format: json
-  enable_stdout: true
-  enable_file: true
-  caller: true
-  log_dir: ./logs
-  max_age_days: 7
-  file_zone: Local
-
-runtime:
-  config:
-    provider: etcd
-    key: configs/service/payment.yaml
-    etcd:
-      endpoints:
-        - 127.0.0.1:2379
-      prefix: /configcenter
-  control:
-    commands_prefix: /go-template/control/commands
-
-service:
-  name: payment
-  grpc_addr: :9003
-  advertise_grpc_addr: 127.0.0.1:9003
-  admin_addr: :9103
-  advertise_admin_addr: 127.0.0.1:9103
-  enable_pprof: true
-
-registry:
+config:
   provider: etcd
+  key: configs/runtime.yaml
   etcd:
     endpoints:
       - 127.0.0.1:2379
-    prefix: /go-template/registry
-
+    prefix: /runtime/config
+control:
+  commands_prefix: /runtime/control/commands
 metadata:
-  routes_prefix: /go-template/gateway/routes
-  descriptors_prefix: /go-template/gateway/descriptors
-
-settings:
-  payment_provider: sandbox
-```
-
-Use the same standard loader when the service should be managed by runtime-admin:
-
-```go
-loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
-	Root: ".",
-	// Key defaults to configs/service/<service>.yaml.
-})
-```
-
-Then wire it into `servicekit.Run`:
-
-```go
-err = servicekit.Run(ctx, servicekit.RunOptions{
-	Spec:       spec,
-	LoadConfig: loader,
-})
+  routes_prefix: /runtime/gateway/routes
+  descriptors_prefix: /runtime/gateway/descriptors
 ```
 
 In etcd mode, `servicekit.Run` uses the returned config for the DataPlane and
 calls `LoadConfig` again whenever a runtime-admin rebuild command is received.
-The managed config should keep `runtime.config.provider: etcd` when the process
-should keep watching runtime-admin commands.
+The managed `configs/runtime.yaml` value should keep `config.provider: etcd`
+when the process should keep watching runtime-admin commands.
 
-Auto-seeding requires the local file to be a complete service config with
-matching `service.name`, a non-empty `service.grpc_addr`, and explicit
-`runtime.config.etcd.endpoints` plus `runtime.config.etcd.prefix`. The managed
-key must be under `configs/service/` unless `ManagedConfigPrefix` is overridden.
-Set `DisableEtcdAutoSeed` when service processes should only read config center
-values.
+The loader reads these logical keys from etcd:
+
+```text
+configs/runtime.yaml
+configs/logger.yaml
+configs/registry.yaml
+configs/infra/etcd.yaml
+configs/infra/mysql.yaml
+configs/infra/redis.yaml
+configs/infra/kafka.yaml
+configs/infra/elastic.yaml
+configs/infra/minio.yaml
+configs/service/payment.yaml
+```
+
+When a key is missing and the same local file exists, the SDK writes it with
+`PutIfAbsent`. Existing etcd values are never overwritten. The loader only seeds
+the current service file, so `configs/service/user.yaml` is not uploaded by the
+payment process. Set `DisableEtcdAutoSeed` when service processes should only
+read config center values.
 
 ## Service Private Settings
 
@@ -597,9 +556,10 @@ configuration.
 
 ## Runtime Admin Rebuild
 
-When `runtime.config.provider` is `etcd` and
-`runtime.control.commands_prefix` is configured, the service listens for control
-commands. A rebuild command causes the process to:
+When `config.provider` in `configs/runtime.yaml` is `etcd` and
+`control.commands_prefix` is configured, the service listens for control
+commands. The composed `servicekit.Config` stores those values under
+`runtime.config` and `runtime.control`. A rebuild command causes the process to:
 
 1. call `LoadConfig` again
 2. build a new DataPlane

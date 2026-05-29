@@ -30,34 +30,46 @@ err := servicekit.Run(ctx, servicekit.RunOptions{
         },
         GatewayPublication: paymentbootstrap.GatewayPublication,
     },
-    LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+    LoadConfig: servicekit.NewConventionConfigLoader(servicekit.ConventionConfigLoaderOptions{
         Root: ".",
     }),
 })
 ```
 
-标准 loader 默认读取 `configs/service/<service>.yaml`。file 模式直接使用本地配置；
-etcd 模式会从配置中心读取托管配置；如果 etcd 中的 managed key 不存在，SDK 会使用本地完整服务配置通过 `PutIfAbsent` 自动 seed 到 etcd，然后再从 etcd 读取最终配置。已有 etcd 配置不会被覆盖。
+约定式 loader 会从拆分配置合成完整 `servicekit.Config`：
+`configs/runtime.yaml`、`configs/logger.yaml`、`configs/registry.yaml`、
+`configs/infra/*.yaml` 和 `configs/service/<service>.yaml`。服务文件只描述
+当前服务自己的监听地址和 `settings`。
 
-当 file 模式配置的 `runtime.config.root` 为空时，SDK 会自动补齐为 loader root，
-这样服务在 `Init` / `InitDistributed` 中可以通过
+file 模式直接读取本地目录；etcd 模式以本地 `configs/runtime.yaml` 作为
+bootstrap，然后从配置中心读取同名逻辑 key。如果 etcd key 不存在且本地存在同名
+文件，SDK 会通过 `PutIfAbsent` 自动 seed，随后再从 etcd 读取；已有 etcd 配置不会被覆盖，且只会 seed 当前服务的 `configs/service/<service>.yaml`。
+
+当 `runtime.config.root` 为空时，SDK 会自动补齐为 loader root，这样服务在
+`Init` / `InitDistributed` 中可以通过
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 使用与 file / etcd
 一致的逻辑 key。
 
-接入方仍然可以为特殊部署环境提供自定义 `LoadConfig`。
+接入方仍然可以使用 `servicekit.NewConfigLoader` 读取旧的单文件完整
+`servicekit.Config`，也可以为特殊部署环境提供自定义 `LoadConfig`。
 
 ### etcd 配置与 rebuild
 
-服务需要从 etcd 加载托管配置时，在 `configs/service/<service>.yaml` 中声明 `runtime.config.provider: etcd`。同一个本地文件也是首次启动时 etcd key 缺失的 seed 来源。本地文件必须是完整服务配置，并包含匹配的 `service.name`、`service.grpc_addr`、`runtime.config.etcd.endpoints` 和 `runtime.config.etcd.prefix`。
+服务需要从 etcd 加载托管配置时，在 `configs/runtime.yaml` 中声明
+`config.provider: etcd`。本地拆分配置也是首次启动时 etcd key 缺失的
+seed 来源。
 
 ```go
-loader := servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+loader := servicekit.NewConventionConfigLoader(servicekit.ConventionConfigLoaderOptions{
     Root: ".",
-    // Key 为空时默认使用 configs/service/<service>.yaml。
+    // RuntimeKey 为空时默认使用 configs/runtime.yaml。
 })
 ```
 
-默认 managed key 必须位于 `configs/service/` 命名空间下。如果平台使用其他逻辑命名空间，可以覆盖 `ManagedConfigPrefix`。如果服务进程只能读配置中心，可以设置 `DisableEtcdAutoSeed` 关闭自动 seed。
+默认 managed key 位于 `configs/` 命名空间下，包括
+`configs/service/<service>.yaml`。如果平台使用其他逻辑命名空间，可以覆盖
+`ManagedConfigPrefix`。如果服务进程只能读配置中心，可以设置
+`DisableEtcdAutoSeed` 关闭自动 seed。
 
 完整外部服务接入示例见 [docs/zh-CN/go-template-service-example.md](docs/zh-CN/go-template-service-example.md)。可运行样例位于 [examples/go-template-payment](examples/go-template-payment)。
 

@@ -1,0 +1,8 @@
+config:
+  provider: file
+  key: configs/runtime.yaml
+control:
+  commands_prefix: /runtime/control/commands
+metadata:
+  routes_prefix: /runtime/gateway/routes
+  descriptors_prefix: /runtime/gateway/descriptors

@@ -49,7 +49,8 @@ runtime-sdk 的核心接入模型是：
 - `RuntimeContext`：普通初始化 hook 可见的上下文。
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
 - `Configs`：按逻辑 key 读取配置中心内容，file / etcd 使用同一套 key 约定，例如 `configs/global/app.yaml`。
-- `NewConfigLoader` / `ManagedConfigLoader`：标准 bootstrap / managed config loader；默认读取 `configs/service/<service>.yaml`，etcd key 缺失时使用本地完整服务配置 `PutIfAbsent` 自动 seed。
+- `NewConventionConfigLoader`：约定式拆分配置 loader；从 `configs/runtime.yaml`、`configs/logger.yaml`、`configs/registry.yaml`、`configs/infra/*.yaml` 和 `configs/service/<service>.yaml` 合成完整 `Config`，etcd key 缺失时按同名本地文件 `PutIfAbsent` 自动 seed。
+- `NewConfigLoader` / `ManagedConfigLoader`：兼容旧单文件完整 `servicekit.Config` 的 bootstrap / managed config loader。
 - `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd、Elasticsearch、MinIO/S3 client。
 - `Clients` / `Client[T]`：按服务名获取 gRPC `ClientConn` 或 typed protobuf client。
 - `DecodeSettings[T]`：从 `Config.Settings` 解码业务私有配置。
@@ -289,6 +290,10 @@ SDK 默认保持 tracing 边界和上下文传播可用，但不强制外部 col
 ```text
 payment-service/
   cmd/payment/main.go
+  configs/runtime.yaml
+  configs/logger.yaml
+  configs/registry.yaml
+  configs/infra/etcd.yaml
   configs/service/payment.yaml
   internal/bootstrap/gateway.go
   internal/bootstrap/module.go
@@ -486,8 +491,7 @@ import (
 )
 
 func main() {
-    configRoot := flag.String("config-root", ".", "project root that contains configs/service")
-    configKey := flag.String("config-key", "", "bootstrap config key; empty means configs/service/<service>.yaml")
+    configRoot := flag.String("config-root", ".", "project root that contains configs")
     flag.Parse()
 
     spec, err := bootstrap.Module()
@@ -497,9 +501,8 @@ func main() {
 
     if err := servicekit.Run(context.Background(), servicekit.RunOptions{
         Spec: spec,
-        LoadConfig: servicekit.NewConfigLoader(servicekit.ConfigLoaderOptions{
+        LoadConfig: servicekit.NewConventionConfigLoader(servicekit.ConventionConfigLoaderOptions{
             Root: *configRoot,
-            Key:  *configKey,
         }),
     }); err != nil {
         panic(err)
@@ -508,91 +511,103 @@ func main() {
 ```
 
 `LoadConfig` 会在初次启动和每次 rebuild 时调用。它必须返回完整的 `servicekit.Config` 快照。
-标准 loader 默认从 `configs/service/<service>.yaml` 读取本地配置。file 模式直接使用本地配置；etcd 模式会从配置中心读取 managed config。如果 etcd key 不存在，SDK 会在本地配置通过校验后通过 `PutIfAbsent` 写入配置中心，然后再从 etcd 读取最终配置。已有 etcd 配置不会被覆盖。
+约定式 loader 默认读取 `configs/runtime.yaml`，并从 `configs/logger.yaml`、`configs/registry.yaml`、`configs/infra/*.yaml` 和 `configs/service/<service>.yaml` 合成完整配置。file 模式直接读取本地拆分文件；etcd 模式使用本地 `configs/runtime.yaml` bootstrap，然后从配置中心读取同名逻辑 key。如果 etcd key 不存在且本地存在同名文件，SDK 会通过 `PutIfAbsent` 写入配置中心，然后再从 etcd 读取最终配置。已有 etcd 配置不会被覆盖，且服务进程只 seed 当前服务自己的 `configs/service/<service>.yaml`。旧的 `NewConfigLoader` 仍用于单文件完整 `servicekit.Config` 兼容场景。
 
-## `servicekit.Config` 配置规范
+## 约定式配置规范
 
-最小常用 YAML：
+推荐使用拆分配置，由 `NewConventionConfigLoader` 合成完整 `servicekit.Config`。
+
+`configs/runtime.yaml`：
 
 ```yaml
-logger:
-  service_name: payment
-  file_prefix: payment
-  level: info
-  stacktrace_level: error
-  format: json
-  enable_stdout: true
-  enable_file: false
-  caller: true
-
-runtime:
-  config:
-    provider: file
-    root: .
-    key: configs/service/payment.yaml
-  control:
-    commands_prefix: /runtime/control/commands
-
-service:
-  name: payment
-  grpc_addr: :9004
-  advertise_grpc_addr: 127.0.0.1:9004
-  admin_addr: :9104
-  advertise_admin_addr: 127.0.0.1:9104
-  enable_pprof: false
-
-registry:
-  provider: etcd
-  etcd:
-    endpoints:
-      - 127.0.0.1:2379
-    prefix: /runtime/registry
-
+config:
+  provider: file
+  key: configs/runtime.yaml
+control:
+  commands_prefix: /runtime/control/commands
 metadata:
   routes_prefix: /runtime/gateway/routes
   descriptors_prefix: /runtime/gateway/descriptors
-
-infra: {}
-
-settings: {}
 ```
 
-字段说明：
+`configs/logger.yaml`：
 
-- `logger`：SDK logger 配置契约。`logger.NewContextWithConfig` 可按该结构创建 logger；`servicekit.Run` 在 `RunOptions.Logger` 为空时会创建基于 `Spec.Name` 的默认 logger。
-- `runtime.config.provider`：`file` 或 `etcd`。只有 `etcd` 会启用 process control watcher。
-- `runtime.config.root`：文件配置根目录。标准入口默认 `--config-root .`，使 `configs/service/<service>.yaml` 和 `configs/global/app.yaml` 这类逻辑 key 在 file / etcd 下保持一致。
-- `runtime.config.key`：配置逻辑 key。为空时标准 loader 按服务名推导为 `configs/service/<service>.yaml`；etcd 模式下也是 etcd prefix 下的 managed config key。
-- `runtime.config.etcd`：etcd 配置中心 endpoints 和 prefix。
-- `runtime.control.commands_prefix`：控制命令前缀，默认语义为 `/runtime/control/commands/<service>/<timestamp>`。
-- `service.name`：服务名，应与 `servicekit.Spec.Name` 和 Gateway `Service` 保持一致。
-- `service.grpc_addr`：本进程监听地址，必填。
-- `service.advertise_grpc_addr`：注册中心和控制命令 instance id 使用的地址；为空时回退到 `grpc_addr`。
-- `service.admin_addr`：admin HTTP 监听地址；为空则不启动 admin HTTP。
-- `service.enable_pprof`：是否在 admin server 上挂载 pprof。
-- `registry.provider`：当前分布式注册中心支持 `etcd`。
-- `registry.etcd.prefix`：服务实例注册前缀。
-- `metadata.routes_prefix`：Gateway route metadata 发布前缀，默认 `/runtime/gateway/routes`。
-- `metadata.descriptors_prefix`：Gateway descriptor set 发布前缀，默认 `/runtime/gateway/descriptors`。
-- `infra`：可选 infra 配置，由 `servicekit.Infra` 按需创建。
-- `settings`：业务私有配置，SDK 不解释，业务用 `DecodeSettings[T]` 解码。
+```yaml
+service_name: payment
+file_prefix: payment
+level: info
+stacktrace_level: error
+format: json
+enable_stdout: true
+enable_file: false
+caller: true
+```
+
+`configs/registry.yaml`：
+
+```yaml
+provider: etcd
+etcd:
+  endpoints:
+    - 127.0.0.1:2379
+  prefix: /runtime/registry
+```
+
+`configs/infra/etcd.yaml`：
+
+```yaml
+endpoints:
+  - 127.0.0.1:2379
+dial_timeout: 3s
+```
+
+`configs/service/payment.yaml`：
+
+```yaml
+grpc_addr: :9004
+advertise_grpc_addr: 127.0.0.1:9004
+admin_addr: :9104
+advertise_admin_addr: 127.0.0.1:9104
+enable_pprof: false
+settings: {}
+```
 
 etcd managed config 示例：
 
 ```yaml
-runtime:
-  config:
-    provider: etcd
-    key: configs/service/payment.yaml
-    etcd:
-      endpoints:
-        - 127.0.0.1:2379
-      prefix: /runtime/config
-  control:
-    commands_prefix: /runtime/control/commands
+config:
+  provider: etcd
+  key: configs/runtime.yaml
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+    prefix: /runtime/config
+control:
+  commands_prefix: /runtime/control/commands
+metadata:
+  routes_prefix: /runtime/gateway/routes
+  descriptors_prefix: /runtime/gateway/descriptors
 ```
 
-这种模式下，本地 `configs/service/payment.yaml` 应是完整服务配置。最终完整配置由 etcd 中的 `/runtime/config/configs/service/payment.yaml` 提供；如果该 key 不存在，标准 loader 会使用本地完整配置自动 seed。自动 seed 要求本地配置包含匹配的 `service.name`、非空 `service.grpc_addr`、`runtime.config.etcd.endpoints` 和 `runtime.config.etcd.prefix`。
+字段说明：
+
+- `configs/runtime.yaml` 的 `config.provider`：`file` 或 `etcd`。合成后对应 `runtime.config.provider`，只有 `etcd` 会启用 process control watcher。
+- `configs/runtime.yaml` 的 `config.key`：默认 `configs/runtime.yaml`，etcd 模式下也是 etcd prefix 下的 runtime fragment key。
+- `configs/runtime.yaml` 的 `config.etcd`：etcd 配置中心 endpoints 和 prefix。
+- `configs/runtime.yaml` 的 `control.commands_prefix`：控制命令前缀，默认语义为 `/runtime/control/commands/<service>/<timestamp>`。
+- `configs/runtime.yaml` 的 `metadata.routes_prefix` / `metadata.descriptors_prefix`：Gateway 元数据发布前缀。
+- `configs/logger.yaml`：SDK logger 配置契约。
+- `configs/registry.yaml`：服务注册中心配置；`provider=etcd` 时 endpoints 和 prefix 必填。
+- `configs/infra/*.yaml`：可选 infra 配置，由 `servicekit.Infra` 按需创建。
+- `service.grpc_addr`：本进程监听地址，必填。
+- `service.advertise_grpc_addr`：注册中心和控制命令 instance id 使用的地址；为空时回退到 `grpc_addr`。
+- `service.admin_addr`：admin HTTP 监听地址；为空则不启动 admin HTTP。
+- `service.enable_pprof`：是否在 admin server 上挂载 pprof。
+- `settings`：业务私有配置，SDK 不解释，业务用 `DecodeSettings[T]` 解码。
+
+这种模式下，etcd 中保存同一套逻辑 key，例如 `/runtime/config/configs/runtime.yaml` 和 `/runtime/config/configs/service/payment.yaml`。如果 key 不存在，约定式 loader 会使用同名本地文件自动 seed；已有 key 永不覆盖。只 seed 当前进程服务名对应的 `configs/service/<service>.yaml`，不扫描其他服务配置。
+
+`NewConfigLoader` / `ManagedConfigLoader` 仍可用于旧的单文件完整 `servicekit.Config`，但新服务模板应优先使用约定式拆分配置，避免公共配置在每个服务文件里重复。
 
 ## Gateway 元数据发布规范
 

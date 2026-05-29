@@ -4,7 +4,7 @@
 
 ## 公开包
 
-- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、标准 bootstrap / managed config loader 和 etcd 首次配置 seed。
+- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、约定式拆分配置 loader、兼容单文件的 bootstrap / managed config loader 和 etcd 首次配置 seed。
 - `runtime/component`：HTTP、gRPC、close hook、服务注册等通用 lifecycle 组件。
 - `runtime/config`：配置存储契约、本地文件 provider、etcd provider。
 - `runtime/control`：rebuild/restart 控制命令契约和命令存储。
