@@ -9,6 +9,7 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
+	"github.com/opencode-sig/runtime-sdk/runtime/defaults"
 	gatewaymeta "github.com/opencode-sig/runtime-sdk/runtime/gatewaymeta"
 )
 
@@ -95,15 +96,7 @@ func metadataDescriptorKey(prefixes MetadataPrefixes, id string) string {
 
 func normalizeMetadataPrefixes(prefixes MetadataPrefixes) MetadataPrefixes {
 	return MetadataPrefixes{
-		RoutesPrefix:      cleanPrefix(prefixes.RoutesPrefix, "/runtime/gateway/routes"),
-		DescriptorsPrefix: cleanPrefix(prefixes.DescriptorsPrefix, "/runtime/gateway/descriptors"),
+		RoutesPrefix:      defaults.CleanPrefix(prefixes.RoutesPrefix, defaults.RoutesPrefix),
+		DescriptorsPrefix: defaults.CleanPrefix(prefixes.DescriptorsPrefix, defaults.DescriptorsPrefix),
 	}
-}
-
-func cleanPrefix(prefix string, fallback string) string {
-	prefix = strings.TrimSpace(prefix)
-	if prefix == "" {
-		return fallback
-	}
-	return "/" + strings.Trim(prefix, "/")
 }

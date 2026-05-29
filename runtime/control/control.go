@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencode-sig/runtime-sdk/runtime/defaults"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -175,9 +176,5 @@ func commandFromEvent(event *clientv3.Event) (Command, bool) {
 }
 
 func cleanPrefix(prefix string) string {
-	prefix = strings.TrimSpace(prefix)
-	if prefix == "" {
-		return "/runtime/control/commands"
-	}
-	return "/" + strings.Trim(prefix, "/")
+	return defaults.CleanPrefix(prefix, defaults.CommandsPrefix)
 }
