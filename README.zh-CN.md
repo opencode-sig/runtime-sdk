@@ -10,7 +10,7 @@ SDK 负责那些不应该泄漏到业务代码里的运行时关注点：
 - 应用错误封装和 gRPC 业务错误；
 - 健康检查、Prometheus 指标和 tracing 辅助能力；
 - 认证契约和身份透传辅助能力；
-- etcd、MySQL、Redis、Kafka 的基础设施配置与客户端构造；
+- etcd、MySQL、Redis、Kafka、Elasticsearch、MinIO/S3 的基础设施配置与客户端构造；
 - 生命周期组件；
 - 配置中心、注册中心、服务发现、控制命令和 Gateway 元数据契约；
 - `servicekit`，用于内部和外部 gRPC 微服务接入的标准 SDK。

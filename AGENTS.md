@@ -50,7 +50,7 @@ runtime-sdk 的核心接入模型是：
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
 - `Configs`：按逻辑 key 读取配置中心内容，file / etcd 使用同一套 key 约定，例如 `configs/global/app.yaml`。
 - `NewConfigLoader` / `ManagedConfigLoader`：标准 bootstrap / managed config loader；默认读取 `configs/service/<service>.yaml`，etcd key 缺失时使用本地完整服务配置 `PutIfAbsent` 自动 seed。
-- `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd client。
+- `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd、Elasticsearch、MinIO/S3 client。
 - `Clients` / `Client[T]`：按服务名获取 gRPC `ClientConn` 或 typed protobuf client。
 - `DecodeSettings[T]`：从 `Config.Settings` 解码业务私有配置。
 
@@ -269,6 +269,8 @@ SDK 默认保持 tracing 边界和上下文传播可用，但不强制外部 col
 - `infra/mysql`：write/read pools、single/read_write mode、`Ping`、`Close`。
 - `infra/redis`：single/sentinel/cluster、TLS、`Ping`。
 - `infra/kafka`：producer、consumer、topic policy、TLS/SASL、connectivity `Check`。
+- `infra/elastic`：Elasticsearch client、basic/API key auth、TLS、`Ping`。
+- `infra/minio`：MinIO/S3-compatible client、default bucket、TLS、`Ping`。
 
 统一规则：
 
@@ -743,6 +745,14 @@ infra:
     brokers:
       - 127.0.0.1:9092
     client_id: payment
+  elastic:
+    addresses:
+      - http://127.0.0.1:9200
+  minio:
+    endpoint: 127.0.0.1:9000
+    access_key: minio
+    secret_key: secret
+    bucket: payment
 ```
 
 ## 日志、错误和观测规范
@@ -778,7 +788,7 @@ infra:
 - 不要硬编码应用名、服务名、本地配置路径、业务路由前缀或部署环境。
 - `servicekit` 不应依赖 protobuf 生成包、Gin、Gateway response envelope 或具体平台应用；它可以聚合公开 optional infra 配置和 client facade，方便服务接入。
 - `runtime/*` 包不要反向依赖顶层 `servicekit` 门面。
-- core runtime 包不要依赖可选 MySQL、Redis、Kafka 包。
+- core runtime 包不要依赖可选 MySQL、Redis、Kafka、Elasticsearch、MinIO/S3 包。
 - `logger`、`rpcerror`、`apperror` 不要依赖 runtime 或 infra 包。
 - 服务声明 Gateway 路由时写显式公网网关路径；`runtime/gatewaymeta` 不会自动添加服务名前缀。
 - 新增公开能力时同步更新 README、中文 README、相关 docs 和本文件。

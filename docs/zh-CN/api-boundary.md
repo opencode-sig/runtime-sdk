@@ -24,9 +24,9 @@
 - SDK 代码不能引用外部项目的 `internal` 包。
 - SDK 代码不能硬编码应用名、服务名、本地配置路径或项目默认 prefix。
 - `servicekit` 不能依赖 protobuf 生成包、Gin、Gateway response envelope 或具体平台应用。
-- `servicekit` 可以作为接入门面聚合可选 infra 的公开配置和 client facade；底层 core runtime 仍然不能依赖 MySQL、Redis、Kafka 等可选 infra。
+- `servicekit` 可以作为接入门面聚合可选 infra 的公开配置和 client facade；底层 core runtime 仍然不能依赖 MySQL、Redis、Kafka、Elasticsearch、MinIO/S3 等可选 infra。
 - `runtime/*` 包不能反向依赖顶层 `servicekit` 门面。
-- core runtime 包不能依赖可选的 MySQL、Redis、Kafka 包。
+- core runtime 包不能依赖可选的 MySQL、Redis、Kafka、Elasticsearch、MinIO/S3 包。
 - `logger`、`rpcerror`、`apperror` 不能依赖 runtime 或 infra 包。
 - 服务声明 Gateway 路由时必须写显式公网网关路径。`runtime/gatewaymeta`
   只规范化斜杠，不会自动添加服务名前缀。Gateway 应根据元数据转发，

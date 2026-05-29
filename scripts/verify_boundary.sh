@@ -56,7 +56,7 @@ check_absent \
 
 check_absent \
   "core runtime must not depend on optional business infra" \
-  'github.com/opencode-sig/runtime-sdk/infra/(mysql|redis|kafka)' \
+  'github.com/opencode-sig/runtime-sdk/infra/(mysql|redis|kafka|elastic|minio)' \
   runtime logger rpcerror apperror observability
 
 check_absent \

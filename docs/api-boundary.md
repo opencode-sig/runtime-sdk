@@ -37,10 +37,10 @@ in a release note.
   response envelopes, or concrete platform applications.
 - `servicekit` may aggregate public optional-infra config and client facades for
   service onboarding. Core runtime packages must still not depend on optional
-  MySQL, Redis, or Kafka packages.
+  MySQL, Redis, Kafka, Elasticsearch, or MinIO/S3 packages.
 - `runtime/*` packages must not depend on the top-level `servicekit` facade.
-- core runtime packages must not depend on optional MySQL, Redis, or Kafka
-  packages.
+- core runtime packages must not depend on optional MySQL, Redis, Kafka,
+  Elasticsearch, or MinIO/S3 packages.
 - `logger`, `rpcerror`, and `apperror` must not depend on runtime or infra
   packages.
 - Services declare explicit public Gateway paths. `runtime/gatewaymeta`

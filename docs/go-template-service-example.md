@@ -639,7 +639,8 @@ required for the new service.
 
 - Keep Gateway metadata close to the service module so route ownership stays
   with the service team.
-- Do not put database, Redis, Kafka, or business logic inside Gateway.
+- Do not put database, Redis, Kafka, search, object storage, or business logic
+  inside Gateway.
 - Do not make business logic branch on monolith or distributed mode.
 - Use advertised addresses for cross-process discovery.
 - Treat local config as bootstrap input and etcd config as the managed runtime

@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
+	infraelastic "github.com/opencode-sig/runtime-sdk/infra/elastic"
 	infraetcd "github.com/opencode-sig/runtime-sdk/infra/etcd"
 	infrakafka "github.com/opencode-sig/runtime-sdk/infra/kafka"
+	inframinio "github.com/opencode-sig/runtime-sdk/infra/minio"
 	inframysql "github.com/opencode-sig/runtime-sdk/infra/mysql"
 	infraredis "github.com/opencode-sig/runtime-sdk/infra/redis"
 	"github.com/opencode-sig/runtime-sdk/logger"
@@ -31,10 +33,12 @@ type Config struct {
 // service generation. Runtime loads these values from file or config center and
 // passes them through; services decide which dependencies they actually use.
 type InfraConfig struct {
-	Etcd  infraetcd.Config  `json:"etcd" yaml:"etcd"`
-	MySQL inframysql.Config `json:"mysql" yaml:"mysql"`
-	Redis infraredis.Config `json:"redis" yaml:"redis"`
-	Kafka infrakafka.Config `json:"kafka" yaml:"kafka"`
+	Etcd    infraetcd.Config    `json:"etcd" yaml:"etcd"`
+	MySQL   inframysql.Config   `json:"mysql" yaml:"mysql"`
+	Redis   infraredis.Config   `json:"redis" yaml:"redis"`
+	Kafka   infrakafka.Config   `json:"kafka" yaml:"kafka"`
+	Elastic infraelastic.Config `json:"elastic" yaml:"elastic"`
+	MinIO   inframinio.Config   `json:"minio" yaml:"minio"`
 }
 
 type RuntimeConfig struct {

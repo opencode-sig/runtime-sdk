@@ -11,7 +11,8 @@ The SDK owns runtime concerns that should not leak into business code:
 - application error wrapping and gRPC business errors
 - health, metrics, and tracing helpers
 - authentication contract and identity propagation helpers
-- infrastructure client configuration for etcd, MySQL, Redis, and Kafka
+- infrastructure client configuration for etcd, MySQL, Redis, Kafka,
+  Elasticsearch, and MinIO/S3
 - lifecycle components
 - config, registry, discovery, control command, and Gateway metadata contracts
 - `servicekit`, the standard managed gRPC microservice SDK

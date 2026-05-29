@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	infraelastic "github.com/opencode-sig/runtime-sdk/infra/elastic"
 	infraetcd "github.com/opencode-sig/runtime-sdk/infra/etcd"
 	infrakafka "github.com/opencode-sig/runtime-sdk/infra/kafka"
+	inframinio "github.com/opencode-sig/runtime-sdk/infra/minio"
 	inframysql "github.com/opencode-sig/runtime-sdk/infra/mysql"
 	infraredis "github.com/opencode-sig/runtime-sdk/infra/redis"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -25,6 +27,8 @@ type Infra interface {
 	KafkaProducer(name ...string) (*infrakafka.Producer, error)
 	KafkaConsumer(topic string, groupID ...string) (*infrakafka.Consumer, error)
 	Etcd(name ...string) (*clientv3.Client, error)
+	Elastic(name ...string) (*infraelastic.Client, error)
+	MinIO(name ...string) (*inframinio.Client, error)
 }
 
 // InfraContainer lazily creates and owns infra clients for one DataPlane generation.
@@ -37,6 +41,8 @@ type InfraContainer struct {
 	kafkaProducer  *infrakafka.Producer
 	kafkaConsumers map[string]*infrakafka.Consumer
 	etcd           *clientv3.Client
+	elastic        *infraelastic.Client
+	minio          *inframinio.Client
 	closed         bool
 }
 
@@ -160,6 +166,48 @@ func (c *InfraContainer) Etcd(name ...string) (*clientv3.Client, error) {
 	return client, nil
 }
 
+// Elastic returns the shared Elasticsearch client for this container.
+func (c *InfraContainer) Elastic(name ...string) (*infraelastic.Client, error) {
+	if err := ensureDefaultInfraName(name...); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.ensureOpenLocked(); err != nil {
+		return nil, err
+	}
+	if c.elastic != nil {
+		return c.elastic, nil
+	}
+	client, err := infraelastic.NewClient(context.Background(), c.cfg.Elastic)
+	if err != nil {
+		return nil, err
+	}
+	c.elastic = client
+	return client, nil
+}
+
+// MinIO returns the shared MinIO/S3-compatible client for this container.
+func (c *InfraContainer) MinIO(name ...string) (*inframinio.Client, error) {
+	if err := ensureDefaultInfraName(name...); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.ensureOpenLocked(); err != nil {
+		return nil, err
+	}
+	if c.minio != nil {
+		return c.minio, nil
+	}
+	client, err := inframinio.NewClient(context.Background(), c.cfg.MinIO)
+	if err != nil {
+		return nil, err
+	}
+	c.minio = client
+	return client, nil
+}
+
 // Close releases all created infra clients. It is safe to call multiple times.
 func (c *InfraContainer) Close() error {
 	if c == nil {
@@ -179,6 +227,8 @@ func (c *InfraContainer) Close() error {
 		consumers = append(consumers, consumer)
 	}
 	etcdClient := c.etcd
+	elasticClient := c.elastic
+	minioClient := c.minio
 	c.mu.Unlock()
 
 	var err error
@@ -198,6 +248,12 @@ func (c *InfraContainer) Close() error {
 	}
 	if etcdClient != nil {
 		err = errors.Join(err, etcdClient.Close())
+	}
+	if elasticClient != nil {
+		err = errors.Join(err, elasticClient.Close())
+	}
+	if minioClient != nil {
+		err = errors.Join(err, minioClient.Close())
 	}
 	return err
 }
