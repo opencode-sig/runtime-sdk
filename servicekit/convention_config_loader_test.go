@@ -14,6 +14,10 @@ func TestConventionConfigLoaderFileModeComposesSplitConfig(t *testing.T) {
 		"configs/runtime.yaml": []byte(`
 config:
   provider: file
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+    prefix: /runtime/config
 control:
   commands_prefix: /runtime/control/commands
 metadata:
@@ -31,8 +35,6 @@ caller: true
 		"configs/registry.yaml": []byte(`
 provider: etcd
 etcd:
-  endpoints:
-    - 127.0.0.1:2379
   prefix: /runtime/registry
 `),
 		"configs/infra/elastic.yaml": []byte(`
@@ -87,6 +89,9 @@ settings:
 	}
 	if cfg.Registry.Etcd.Prefix != "/runtime/registry" {
 		t.Fatalf("registry prefix = %q, want /runtime/registry", cfg.Registry.Etcd.Prefix)
+	}
+	if len(cfg.Registry.Etcd.Endpoints) != 1 || cfg.Registry.Etcd.Endpoints[0] != "127.0.0.1:2379" {
+		t.Fatalf("registry endpoints = %v, want inherited runtime config endpoint", cfg.Registry.Etcd.Endpoints)
 	}
 	if cfg.Infra.Elastic.Addresses[0] != "http://127.0.0.1:9200" {
 		t.Fatalf("elastic addresses = %v", cfg.Infra.Elastic.Addresses)

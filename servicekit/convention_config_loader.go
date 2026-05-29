@@ -136,6 +136,7 @@ func composeConventionConfig(ctx context.Context, service string, provider runti
 	if err := loadOptionalConventionFragment(ctx, provider, path.Join(managedPrefix, "registry.yaml"), &cfg.Registry); err != nil {
 		return Config{}, err
 	}
+	inheritConventionRegistryEtcd(&cfg)
 	if err := loadOptionalConventionFragment(ctx, provider, path.Join(managedPrefix, "infra", "etcd.yaml"), &cfg.Infra.Etcd); err != nil {
 		return Config{}, err
 	}
@@ -170,6 +171,15 @@ func composeConventionConfig(ctx context.Context, service string, provider runti
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func inheritConventionRegistryEtcd(cfg *Config) {
+	if cfg == nil || !strings.EqualFold(strings.TrimSpace(cfg.Registry.Provider), "etcd") {
+		return
+	}
+	if len(cfg.Registry.Etcd.Endpoints) == 0 {
+		cfg.Registry.Etcd.Endpoints = append([]string(nil), cfg.Runtime.Config.Etcd.Endpoints...)
+	}
 }
 
 func defaultConventionConfig(root string, runtimeFragment conventionRuntimeFragment) Config {
