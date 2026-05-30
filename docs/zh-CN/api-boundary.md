@@ -45,6 +45,9 @@
   `runtime_service`、`runtime_mode`、`instance_id` 等运行时日志身份字段。
   这些字段只描述当前产生日志的实例，不能承载应用业务身份。日志描述被操作的
   其他实例时应使用 `target_instance_id`。
+- `runtime/registry.ServiceInstance` 的外部序列化契约使用 snake_case JSON/YAML
+  字段，例如 `started_at`、`last_seen`、`data_plane_generation`。registry 或
+  discovery 消费方不应依赖 Go 结构体字段名作为存储格式。
 - Gateway 响应行为默认由应用网关包标准 JSON envelope。浏览器可直接渲染
   或文件型 raw 输出属于 Gateway 路由契约，必须通过
   `runtime/gatewaymeta.RawResponse` 显式声明。Gateway 实现应基于 protobuf

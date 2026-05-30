@@ -379,6 +379,10 @@ only contains the payment service fragment.
 config:
   provider: file
   key: configs/runtime.yaml
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+    prefix: /runtime/config
 control:
   commands_prefix: /runtime/control/commands
 metadata:
@@ -404,10 +408,13 @@ caller: true
 ```yaml
 provider: etcd
 etcd:
-  endpoints:
-    - 127.0.0.1:2379
   prefix: /runtime/registry
 ```
+
+When `configs/registry.yaml` omits endpoints, the convention loader inherits
+them from `config.etcd.endpoints` in `configs/runtime.yaml`.
+`configs/infra/etcd.yaml` is only for business code that requests
+`ctx.Infra.Etcd()`; it does not select the registry or config-center cluster.
 
 `configs/infra/etcd.yaml`
 

@@ -338,6 +338,10 @@ func main() {
 config:
   provider: file
   key: configs/runtime.yaml
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+    prefix: /runtime/config
 control:
   commands_prefix: /runtime/control/commands
 metadata:
@@ -363,10 +367,13 @@ caller: true
 ```yaml
 provider: etcd
 etcd:
-  endpoints:
-    - 127.0.0.1:2379
   prefix: /runtime/registry
 ```
+
+`configs/registry.yaml` 省略 endpoints 时，约定式 loader 会从
+`configs/runtime.yaml` 的 `config.etcd.endpoints` 继承。`configs/infra/etcd.yaml`
+只用于业务代码通过 `ctx.Infra.Etcd()` 获取 etcd client，不参与 registry 或
+配置中心选择。
 
 `configs/infra/etcd.yaml`
 

@@ -1,6 +1,10 @@
 config:
   provider: file
   key: configs/runtime.yaml
+  etcd:
+    endpoints:
+      - 127.0.0.1:2379
+    prefix: /runtime/config
 control:
   commands_prefix: /runtime/control/commands
 metadata:

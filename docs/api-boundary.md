@@ -64,6 +64,10 @@ in a release note.
   into service initialization. These fields describe the current log producer
   and must not encode application-specific business identity. Operations aimed
   at another instance should use `target_instance_id`.
+- The external serialization contract for `runtime/registry.ServiceInstance`
+  uses snake_case JSON/YAML fields such as `started_at`, `last_seen`, and
+  `data_plane_generation`. Registry and discovery consumers must not depend on
+  Go struct field names as the storage format.
 - Gateway response behavior defaults to the application JSON envelope.
   Browser-renderable or file-like raw output is part of the Gateway route
   contract and must be declared through `runtime/gatewaymeta.RawResponse`.

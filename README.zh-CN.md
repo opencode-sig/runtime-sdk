@@ -45,6 +45,12 @@ file 模式直接读取本地目录；etcd 模式以本地 `configs/runtime.yaml
 bootstrap，然后从配置中心读取同名逻辑 key。如果 etcd key 不存在且本地存在同名
 文件，SDK 会通过 `PutIfAbsent` 自动 seed，随后再从 etcd 读取；已有 etcd 配置不会被覆盖，且只会 seed 当前服务的 `configs/service/<service>.yaml`。
 
+`configs/runtime.yaml` 中的 `config.etcd` 是配置中心和控制通道的 bootstrap
+配置；即使 `config.provider: file`，约定式 loader 也会在
+`configs/registry.yaml` 声明 `provider: etcd` 但未写 endpoints 时，复用这里的
+endpoints。业务代码通过 `ctx.Infra.Etcd()` 获取的 etcd client 则读取
+`configs/infra/etcd.yaml`，两者可以指向同一个集群，也可以按部署需要分开。
+
 当 `runtime.config.root` 为空时，SDK 会自动补齐为 loader root，这样服务在
 `Init` / `InitDistributed` 中可以通过
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` 使用与 file / etcd

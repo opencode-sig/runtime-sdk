@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+## v0.5.0 - 2026-05-30
+
 - Added `servicekit.NewConventionConfigLoader` for go-template-style split
   service config fragments, including etcd `PutIfAbsent` seeding for missing
   convention keys.
+- Added registry endpoint inheritance for convention configs: when
+  `configs/registry.yaml` uses etcd without endpoints, it inherits
+  `configs/runtime.yaml` `config.etcd.endpoints`.
+- Fixed `runtime/registry.ServiceInstance` JSON/YAML serialization to use the
+  documented snake_case contract, including `data_plane_started_at` and
+  `data_plane_generation`.
 - Added optional Elasticsearch and MinIO/S3 infra config and client helpers,
   including `servicekit.Infra` lazy client accessors.
 - Added `servicekit.NewConfigLoader` and `ManagedConfigLoader` as the standard

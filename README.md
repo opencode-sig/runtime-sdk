@@ -51,6 +51,13 @@ matching local file exists, the SDK seeds that key with `PutIfAbsent` and then
 loads from etcd. Existing etcd config is never overwritten, and only the current
 service's `configs/service/<service>.yaml` is seeded.
 
+The `config.etcd` block in `configs/runtime.yaml` is the bootstrap config for
+the config center and control channel. Even with `config.provider: file`, the
+convention loader reuses those endpoints when `configs/registry.yaml` declares
+`provider: etcd` without its own endpoints. Etcd clients requested by business
+code through `ctx.Infra.Etcd()` still use `configs/infra/etcd.yaml`; the two
+configs may point at the same cluster or be separated by deployment policy.
+
 When `runtime.config.root` is empty, the SDK fills it with the loader root so
 service initialization code can read shared config through
 `ctx.Configs.Decode(ctx, "configs/global/app.yaml", &cfg)` with the same logical
