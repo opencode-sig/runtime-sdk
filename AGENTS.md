@@ -51,6 +51,7 @@ runtime-sdk 的核心接入模型是：
 - `Configs`：按逻辑 key 读取配置中心内容，file / etcd 使用同一套 key 约定，例如 `configs/global/app.yaml`。
 - `NewConventionConfigLoader`：约定式拆分配置 loader；从 `configs/runtime.yaml`、`configs/logger.yaml`、`configs/registry.yaml`、`configs/infra/*.yaml` 和 `configs/service/<service>.yaml` 合成完整 `Config`，etcd key 缺失时按同名本地文件 `PutIfAbsent` 自动 seed。
 - `NewConfigLoader` / `ManagedConfigLoader`：兼容旧单文件完整 `servicekit.Config` 的 bootstrap / managed config loader。
+- `NewGeneration(service)`：生成 SDK 统一的 DataPlane generation 标识，供 Gateway 等自定义 DataPlane owner 复用 runtime 身份规则。
 - `Infra` / `InfraContainer`：按需创建并托管 MySQL、Redis、Kafka、etcd、Elasticsearch、MinIO/S3 client。
 - `Clients` / `Client[T]`：按服务名获取 gRPC `ClientConn` 或 typed protobuf client。
 - `DecodeSettings[T]`：从 `Config.Settings` 解码业务私有配置。

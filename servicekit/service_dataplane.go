@@ -3,11 +3,15 @@ package servicekit
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/opencode-sig/runtime-sdk/logger"
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
 )
+
+var generationSequence atomic.Int64
 
 // ServiceDataPlane owns one generation of a managed gRPC service runtime.
 type ServiceDataPlane struct {
@@ -18,7 +22,7 @@ type ServiceDataPlane struct {
 }
 
 func NewServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*ServiceDataPlane, error) {
-	generation := newGeneration(spec.Name)
+	generation := NewGeneration(spec.Name)
 	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation)
 	if err != nil {
 		return nil, err
@@ -27,7 +31,7 @@ func NewServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode
 }
 
 func NewDataPlane(name string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
-	return newDataPlaneWithGeneration(newGeneration(name), cfg, app, log)
+	return newDataPlaneWithGeneration(NewGeneration(name), cfg, app, log)
 }
 
 func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
@@ -42,8 +46,33 @@ func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Ru
 	}, nil
 }
 
-func newGeneration(name string) string {
-	return fmt.Sprintf("%s-%d", name, time.Now().UnixNano())
+// NewGeneration creates a runtime DataPlane generation identifier for service.
+//
+// The returned value is stable in shape, "<service>-<number>", so registry
+// metadata, runtime-admin views, rebuild logs, and custom DataPlane owners such
+// as Gateways can share one SDK-defined generation contract. Empty service
+// names are normalized to "dataplane".
+func NewGeneration(service string) string {
+	service = strings.TrimSpace(service)
+	if service == "" {
+		service = "dataplane"
+	}
+	sequence := nextGenerationSequence()
+	return fmt.Sprintf("%s-%d", service, sequence)
+}
+
+func nextGenerationSequence() int64 {
+	now := time.Now().UnixNano()
+	for {
+		last := generationSequence.Load()
+		next := now
+		if next <= last {
+			next = last + 1
+		}
+		if generationSequence.CompareAndSwap(last, next) {
+			return next
+		}
+	}
 }
 
 func (r *ServiceDataPlane) Generation() string {

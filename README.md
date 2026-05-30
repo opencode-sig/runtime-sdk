@@ -116,6 +116,11 @@ and `user_id` from context values or gRPC metadata. `instance_id` is reserved
 for the current log producer; use `target_instance_id` when recording an
 operation that targets another instance.
 
+Custom DataPlane owners such as Gateways should use `servicekit.NewGeneration`
+to create `data_plane_generation` values, then keep their own lifecycle
+assembly. The generation contract is shared runtime identity; it does not force
+Gateways to use the managed gRPC service template.
+
 Gateway route specs use explicit public Gateway paths, for example
 `/v1/payments/{id}`. `runtime/gatewaymeta` normalizes slashes but does not add a
 service-name prefix. Gateways should forward by the published

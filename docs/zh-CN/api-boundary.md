@@ -4,7 +4,7 @@
 
 ## 公开包
 
-- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、约定式拆分配置 loader、兼容单文件的 bootstrap / managed config loader 和 etcd 首次配置 seed。
+- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、约定式拆分配置 loader、兼容单文件的 bootstrap / managed config loader、SDK 统一的 DataPlane generation 标识和 etcd 首次配置 seed。
 - `runtime/component`：HTTP、gRPC、close hook、服务注册等通用 lifecycle 组件。
 - `runtime/config`：配置存储契约、本地文件 provider、etcd provider。
 - `runtime/control`：rebuild/restart 控制命令契约和命令存储。
@@ -45,6 +45,10 @@
   `runtime_service`、`runtime_mode`、`instance_id` 等运行时日志身份字段。
   这些字段只描述当前产生日志的实例，不能承载应用业务身份。日志描述被操作的
   其他实例时应使用 `target_instance_id`。
+- DataPlane generation 是 runtime 层身份，不属于 Gateway 或业务逻辑。
+  自定义 DataPlane owner 应调用 `servicekit.NewGeneration`，并保留自己的
+  lifecycle 组装逻辑；不要复制 generation 规则，也不要为了复用规则而强行套入
+  普通 gRPC 服务模板。
 - `runtime/registry.ServiceInstance` 的外部序列化契约使用 snake_case JSON/YAML
   字段，例如 `started_at`、`last_seen`、`data_plane_generation`。registry 或
   discovery 消费方不应依赖 Go 结构体字段名作为存储格式。

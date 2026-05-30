@@ -7,8 +7,8 @@ do not know anything about a specific application repository.
 
 - `servicekit`: managed gRPC service entrypoint and service lifecycle
   contract, including the convention-based split config loader, compatible
-  single-file bootstrap/managed config loader, and etcd first-run config
-  seeding.
+  single-file bootstrap/managed config loader, SDK-defined DataPlane generation
+  identifiers, and etcd first-run config seeding.
 - `runtime/component`: generic lifecycle components for HTTP, gRPC, close hooks,
   and registry registration.
 - `runtime/config`: configuration store contracts and etcd-backed store.
@@ -64,6 +64,10 @@ in a release note.
   into service initialization. These fields describe the current log producer
   and must not encode application-specific business identity. Operations aimed
   at another instance should use `target_instance_id`.
+- DataPlane generation identifiers are runtime identity, not Gateway or
+  business logic. Custom DataPlane owners should call `servicekit.NewGeneration`
+  and keep their own lifecycle assembly instead of duplicating generation
+  rules or forcing themselves through managed gRPC service templates.
 - The external serialization contract for `runtime/registry.ServiceInstance`
   uses snake_case JSON/YAML fields such as `started_at`, `last_seen`, and
   `data_plane_generation`. Registry and discovery consumers must not depend on

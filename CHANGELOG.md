@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.5.3 - 2026-05-30
+
+- Added `servicekit.NewGeneration` so custom DataPlane owners can reuse the
+  SDK-defined `data_plane_generation` contract without adopting managed gRPC
+  service assembly.
+
 ## v0.5.2 - 2026-05-30
 
 - Added resilient etcd registry recovery: managed service registrations now

@@ -101,6 +101,10 @@ gRPC metadata 中追加 `request_id`、`client_ip`、`trace_id`、`user_id` 等�
 `instance_id` 只表示当前产生日志的实例；如果日志描述的是一个被操作的目标实例，
 请使用 `target_instance_id`。
 
+Gateway 等自定义 DataPlane owner 应使用 `servicekit.NewGeneration` 生成
+`data_plane_generation`，同时保留自己的 lifecycle 组装逻辑。generation 是共享的
+runtime 身份契约，不要求 Gateway 套用普通 gRPC 微服务模板。
+
 Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`。
 `runtime/gatewaymeta` 只规范化斜杠，不会自动添加服务名前缀。Gateway
 应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
