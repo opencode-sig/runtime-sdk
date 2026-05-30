@@ -88,7 +88,9 @@ service processes should be read-only against the config center.
 For a complete external microservice example, see
 [`docs/go-template-service-example.md`](docs/go-template-service-example.md).
 The runnable sample lives in
-[`examples/go-template-payment`](examples/go-template-payment).
+[`examples/go-template-payment`](examples/go-template-payment), including a
+distributed `payment` + `user` service pair that exercises etcd-backed
+registry/discovery and service-name gRPC clients.
 
 Managed services can also resolve other services by name through
 `servicekit.DistributedContext.Clients`:

@@ -3,14 +3,15 @@ package bootstrap
 import (
 	"context"
 
-	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/handler"
-	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/service"
+	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/handler"
+	paymentservice "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/service"
 	paymentv1 "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/protobuf/payment/v1"
+	userv1 "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/protobuf/user/v1"
 	"github.com/opencode-sig/runtime-sdk/servicekit"
 )
 
 func Module() (servicekit.Spec, error) {
-	paymentService := service.New()
+	paymentService := paymentservice.New()
 	paymentHandler := handler.New(paymentService)
 
 	return servicekit.NewGRPCSpec(servicekit.GRPCSpec[paymentv1.PaymentServiceServer]{
@@ -25,7 +26,7 @@ func Module() (servicekit.Spec, error) {
 			return nil
 		},
 		Init: func(ctx servicekit.RuntimeContext) error {
-			settings, err := servicekit.DecodeSettings[service.Settings](ctx.Config)
+			settings, err := servicekit.DecodeSettings[paymentservice.Settings](ctx.Config)
 			if err != nil {
 				return err
 			}
@@ -40,6 +41,10 @@ type userProbe struct {
 }
 
 func (p userProbe) CheckUser(ctx context.Context) error {
-	_, err := p.clients.Conn(ctx, "user")
+	client, err := servicekit.Client(p.clients, ctx, "user", userv1.NewUserServiceClient)
+	if err != nil {
+		return err
+	}
+	_, err = client.GetUser(ctx, &userv1.GetUserRequest{Id: "user-1001"})
 	return err
 }

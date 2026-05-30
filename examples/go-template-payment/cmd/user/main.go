@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 
-	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/bootstrap"
+	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/user/bootstrap"
 	"github.com/opencode-sig/runtime-sdk/servicekit"
 )
 

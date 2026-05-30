@@ -3,17 +3,17 @@ package handler
 import (
 	"context"
 
-	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/service"
+	paymentservice "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/service"
 	paymentv1 "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/protobuf/payment/v1"
 )
 
 type Handler struct {
 	paymentv1.UnimplementedPaymentServiceServer
 
-	service *service.Service
+	service *paymentservice.Service
 }
 
-func New(service *service.Service) *Handler {
+func New(service *paymentservice.Service) *Handler {
 	return &Handler{service: service}
 }
 
@@ -33,7 +33,7 @@ func (h *Handler) CreatePayment(ctx context.Context, req *paymentv1.CreatePaymen
 	return toResponse(payment), nil
 }
 
-func toResponse(payment service.Payment) *paymentv1.PaymentResponse {
+func toResponse(payment paymentservice.Payment) *paymentv1.PaymentResponse {
 	return &paymentv1.PaymentResponse{
 		Id:       payment.ID,
 		OrderId:  payment.OrderID,

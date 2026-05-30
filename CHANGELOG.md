@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.5.1 - 2026-05-30
+
+- Added a runnable distributed `payment` + `user` example under
+  `examples/go-template-payment`, including a unified `cmd/distributed`
+  launcher, a sample client, separate service-owned internal package trees, and
+  user protobuf/service wiring for service-name gRPC calls through etcd
+  registry/discovery.
+
 ## v0.5.0 - 2026-05-30
 
 - Added `servicekit.NewConventionConfigLoader` for go-template-style split

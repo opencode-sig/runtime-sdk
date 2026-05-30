@@ -77,7 +77,7 @@ loader := servicekit.NewConventionConfigLoader(servicekit.ConventionConfigLoader
 `ManagedConfigPrefix`。如果服务进程只能读配置中心，可以设置
 `DisableEtcdAutoSeed` 关闭自动 seed。
 
-完整外部服务接入示例见 [docs/zh-CN/go-template-service-example.md](docs/zh-CN/go-template-service-example.md)。可运行样例位于 [examples/go-template-payment](examples/go-template-payment)。
+完整外部服务接入示例见 [docs/zh-CN/go-template-service-example.md](docs/zh-CN/go-template-service-example.md)。可运行样例位于 [examples/go-template-payment](examples/go-template-payment)，其中包含 `payment` + `user` 两个服务组成的 distributed 示例，用于验证 etcd-backed registry/discovery 和按服务名访问 gRPC client。
 
 服务也可以通过 `servicekit.DistributedContext.Clients` 按服务名获取其他 gRPC 服务连接：
 
