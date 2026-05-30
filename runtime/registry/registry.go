@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-var ErrInstanceNotFound = errors.New("service instance not found")
+var (
+	ErrInstanceNotFound    = errors.New("service instance not found")
+	ErrRegistrationExpired = errors.New("service registration expired")
+)
 
 type ServiceInstance struct {
 	ID                  string            `json:"id" yaml:"id"`

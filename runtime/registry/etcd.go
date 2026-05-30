@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -178,7 +179,20 @@ type etcdRegistration struct {
 // Renew actively refreshes the lease once.
 func (r *etcdRegistration) Renew(ctx context.Context) error {
 	_, err := r.client.KeepAliveOnce(ctx, r.lease)
-	return err
+	if errors.Is(rpctypes.Error(err), rpctypes.ErrLeaseNotFound) {
+		return fmt.Errorf("%w: %v", ErrRegistrationExpired, err)
+	}
+	if err != nil {
+		return err
+	}
+	resp, err := r.client.Get(ctx, r.key, clientv3.WithCountOnly())
+	if err != nil {
+		return err
+	}
+	if resp.Count == 0 {
+		return fmt.Errorf("%w: registry key %s not found", ErrRegistrationExpired, r.key)
+	}
+	return nil
 }
 
 // Deregister stops keepalive, deletes the instance key, and revokes the lease.
@@ -191,6 +205,9 @@ func (r *etcdRegistration) Deregister(ctx context.Context) error {
 	}
 	_, deleteErr := r.client.Delete(ctx, r.key)
 	_, revokeErr := r.client.Revoke(ctx, r.lease)
+	if errors.Is(rpctypes.Error(revokeErr), rpctypes.ErrLeaseNotFound) {
+		revokeErr = nil
+	}
 	return errors.Join(deleteErr, revokeErr)
 }
 

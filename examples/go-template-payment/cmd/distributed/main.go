@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 
 	paymentbootstrap "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/bootstrap"
 	userbootstrap "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/user/bootstrap"
@@ -16,7 +17,7 @@ type serviceModule struct {
 }
 
 func main() {
-	configRoot := flag.String("config-root", "examples/go-template-payment", "project root that contains configs")
+	configRoot := flag.String("config-root", defaultConfigRoot(), "project root that contains configs")
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,6 +49,16 @@ func main() {
 	if firstErr != nil {
 		panic(firstErr)
 	}
+}
+
+func defaultConfigRoot() string {
+	if _, err := os.Stat("configs/runtime.yaml"); err == nil {
+		return "."
+	}
+	if _, err := os.Stat("examples/go-template-payment/configs/runtime.yaml"); err == nil {
+		return "examples/go-template-payment"
+	}
+	return "."
 }
 
 func runService(ctx context.Context, loader servicekit.ConfigLoader, svc serviceModule) error {

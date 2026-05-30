@@ -48,6 +48,9 @@
 - `runtime/registry.ServiceInstance` 的外部序列化契约使用 snake_case JSON/YAML
   字段，例如 `started_at`、`last_seen`、`data_plane_generation`。registry 或
   discovery 消费方不应依赖 Go 结构体字段名作为存储格式。
+- `runtime/registry.ErrRegistrationExpired` 表示注册租约或底层记录已经丢失。
+  lifecycle 组件收到该错误时可以重建注册；普通 registry 连接抖动不应映射为
+  这个错误。
 - Gateway 响应行为默认由应用网关包标准 JSON envelope。浏览器可直接渲染
   或文件型 raw 输出属于 Gateway 路由契约，必须通过
   `runtime/gatewaymeta.RawResponse` 显式声明。Gateway 实现应基于 protobuf

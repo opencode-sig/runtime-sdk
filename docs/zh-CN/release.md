@@ -13,6 +13,8 @@ make race
 
 ```sh
 make integration     # 需要 etcd，默认 ETCD_ENDPOINT=127.0.0.1:2379
+make smoke-distributed # 运行本仓库 payment/user distributed 示例
+make resilience      # 需要 Docker etcd，验证注册恢复能力
 make smoke-consumer  # 需要消费方项目 checkout 和 etcd
 ```
 
@@ -37,6 +39,8 @@ make smoke-consumer  # 需要消费方项目 checkout 和 etcd
 make verify
 make race
 make integration
+make smoke-distributed
+make resilience
 make smoke-consumer
 ```
 

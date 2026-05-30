@@ -68,6 +68,10 @@ in a release note.
   uses snake_case JSON/YAML fields such as `started_at`, `last_seen`, and
   `data_plane_generation`. Registry and discovery consumers must not depend on
   Go struct field names as the storage format.
+- `runtime/registry.ErrRegistrationExpired` marks a registration whose lease or
+  backing record has been lost. Lifecycle components may recreate the
+  registration when this error is returned; transient registry connectivity
+  errors should not be mapped to it.
 - Gateway response behavior defaults to the application JSON envelope.
   Browser-renderable or file-like raw output is part of the Gateway route
   contract and must be declared through `runtime/gatewaymeta.RawResponse`.

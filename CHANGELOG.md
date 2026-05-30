@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.5.2 - 2026-05-30
+
+- Added resilient etcd registry recovery: managed service registrations now
+  renew in the background, re-register automatically when the etcd lease or
+  registry key is lost, and ignore missing leases during deregistration.
+- Added `runtime/registry.ErrRegistrationExpired` so registry implementations
+  can explicitly signal that a service registration must be recreated.
+- Added distributed example release gates for normal service discovery smoke
+  verification and etcd-backed registry resilience verification.
+
 ## v0.5.1 - 2026-05-30
 
 - Added a runnable distributed `payment` + `user` example under

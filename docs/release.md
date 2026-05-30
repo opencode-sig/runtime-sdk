@@ -11,6 +11,8 @@ Optional checks:
 
 ```sh
 make integration      # requires etcd at ETCD_ENDPOINT, default 127.0.0.1:2379
+make smoke-distributed # runs the local payment/user distributed example
+make resilience       # requires Docker etcd; verifies registry recovery
 make smoke-consumer   # requires a consuming project checkout and etcd
 ```
 
