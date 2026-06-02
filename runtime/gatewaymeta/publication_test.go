@@ -31,6 +31,12 @@ func TestNewGatewayPublication(t *testing.T) {
 	if routes[0].GRPC.DescriptorID != "api.user.v1" {
 		t.Fatalf("descriptor id = %q", routes[0].GRPC.DescriptorID)
 	}
+	if routes[0].Backend == nil || routes[0].Backend.Type != BackendTypeGRPC || routes[0].Backend.GRPC == nil {
+		t.Fatalf("backend = %#v, want grpc backend", routes[0].Backend)
+	}
+	if routes[0].Backend.GRPC.FullMethod != routes[0].GRPC.FullMethod {
+		t.Fatalf("backend full method = %q, want %q", routes[0].Backend.GRPC.FullMethod, routes[0].GRPC.FullMethod)
+	}
 	if len(descriptors["api.user.v1"]) == 0 {
 		t.Fatal("descriptor set is empty")
 	}
@@ -93,6 +99,201 @@ func TestNewGatewayPublicationPublicRoute(t *testing.T) {
 	}
 	if routes[0].Auth == nil || !routes[0].Auth.Public {
 		t.Fatalf("auth policy = %#v", routes[0].Auth)
+	}
+}
+
+func TestNewGatewayPublicationHTTPProxy(t *testing.T) {
+	routes, descriptors, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").
+				UpstreamPath("/orders/search").
+				Timeout("3s"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if len(descriptors) != 0 {
+		t.Fatalf("descriptors = %v, want empty", descriptors)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("routes length = %d", len(routes))
+	}
+	route := routes[0]
+	if route.ID != "legacy.orders_search" {
+		t.Fatalf("route id = %q", route.ID)
+	}
+	if route.Backend == nil || route.Backend.Type != BackendTypeHTTP || route.Backend.HTTP == nil {
+		t.Fatalf("backend = %#v, want http backend", route.Backend)
+	}
+	if route.Backend.HTTP.Service != "legacy-api" {
+		t.Fatalf("backend service = %q", route.Backend.HTTP.Service)
+	}
+	if route.Backend.HTTP.Path != "/orders/search" {
+		t.Fatalf("backend path = %q", route.Backend.HTTP.Path)
+	}
+	if route.GRPC.FullMethod != "" {
+		t.Fatalf("grpc full method = %q, want empty", route.GRPC.FullMethod)
+	}
+	data, err := json.Marshal(route)
+	if err != nil {
+		t.Fatalf("marshal route: %v", err)
+	}
+	if containsJSONField(data, "grpc") {
+		t.Fatalf("http proxy route should omit grpc field: %s", string(data))
+	}
+}
+
+func TestNewGatewayPublicationHTTPProxyAnyMethod(t *testing.T) {
+	routes, _, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			HTTPProxy("legacy.any", "ANY", "/v1/legacy/{path}", "legacy-api"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if routes[0].HTTP.Method != HTTPMethodAny {
+		t.Fatalf("http method = %q, want ANY", routes[0].HTTP.Method)
+	}
+
+	routes, _, err = NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			HTTPProxy("legacy.star", "*", "/v1/legacy-star/{path}", "legacy-api"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication with star method: %v", err)
+	}
+	if routes[0].HTTP.Method != HTTPMethodAny {
+		t.Fatalf("star http method = %q, want ANY", routes[0].HTTP.Method)
+	}
+}
+
+func TestNewGatewayPublicationMixedGRPCAndHTTPProxy(t *testing.T) {
+	routes, descriptors, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "user",
+		File:    testUserFile(t),
+		Routes: []GatewayRouteSpec{
+			GET("GetUser", "/v1/users/{id}").Path("id", "id"),
+			HTTPProxy("user.legacy_profile", "GET", "/v1/users/{id}/legacy-profile", "legacy-user").
+				UpstreamPath("/users/profile"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if len(routes) != 2 {
+		t.Fatalf("routes length = %d", len(routes))
+	}
+	if len(descriptors["api.user.v1"]) == 0 {
+		t.Fatal("descriptor set is empty")
+	}
+	if routes[0].Backend.Type != BackendTypeGRPC {
+		t.Fatalf("first backend = %q, want grpc", routes[0].Backend.Type)
+	}
+	if routes[1].Backend.Type != BackendTypeHTTP {
+		t.Fatalf("second backend = %q, want http", routes[1].Backend.Type)
+	}
+}
+
+func TestNewGatewayPublicationHTTPProxyRejectsInvalidSpec(t *testing.T) {
+	tests := []struct {
+		name string
+		spec GatewayRouteSpec
+	}{
+		{
+			name: "missing id",
+			spec: HTTPProxy("", "POST", "/v1/legacy/orders/search", "legacy-api"),
+		},
+		{
+			name: "missing service",
+			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", ""),
+		},
+		{
+			name: "binding",
+			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").Body("*"),
+		},
+		{
+			name: "raw response",
+			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").RawResponse("text/plain"),
+		},
+		{
+			name: "url upstream path",
+			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").UpstreamPath("http://legacy/orders"),
+		},
+		{
+			name: "query upstream path",
+			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").UpstreamPath("/orders?debug=1"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := NewGatewayPublication(GatewayPublicationSpec{
+				Service: "legacy",
+				Routes:  []GatewayRouteSpec{tt.spec},
+			})
+			if err == nil {
+				t.Fatal("expected gateway publication error")
+			}
+		})
+	}
+}
+
+func TestNewGatewayPublicationRejectsDuplicateHTTPRoute(t *testing.T) {
+	_, _, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "user",
+		File:    testUserFile(t),
+		Routes: []GatewayRouteSpec{
+			GET("GetUser", "/v1/users/{id}"),
+			HTTPProxy("user.legacy_get", "GET", "/v1/users/{id}", "legacy-user"),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate route error")
+	}
+}
+
+func TestNewGatewayPublicationRejectsAnyHTTPRouteConflict(t *testing.T) {
+	tests := []struct {
+		name   string
+		routes []GatewayRouteSpec
+	}{
+		{
+			name: "any before concrete",
+			routes: []GatewayRouteSpec{
+				HTTPProxy("legacy.any", "ANY", "/v1/legacy/orders", "legacy-api"),
+				HTTPProxy("legacy.get", "GET", "/v1/legacy/orders", "legacy-api"),
+			},
+		},
+		{
+			name: "concrete before any",
+			routes: []GatewayRouteSpec{
+				HTTPProxy("legacy.post", "POST", "/v1/legacy/orders", "legacy-api"),
+				HTTPProxy("legacy.any", "ANY", "/v1/legacy/orders", "legacy-api"),
+			},
+		},
+		{
+			name: "star conflicts as any",
+			routes: []GatewayRouteSpec{
+				HTTPProxy("legacy.get", "GET", "/v1/legacy/orders", "legacy-api"),
+				HTTPProxy("legacy.star", "*", "/v1/legacy/orders", "legacy-api"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := NewGatewayPublication(GatewayPublicationSpec{
+				Service: "legacy",
+				Routes:  tt.routes,
+			})
+			if err == nil {
+				t.Fatal("expected conflict error")
+			}
+		})
 	}
 }
 

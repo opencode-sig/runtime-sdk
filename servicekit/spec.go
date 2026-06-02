@@ -2,6 +2,7 @@ package servicekit
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -17,6 +18,7 @@ import (
 type Spec struct {
 	Name               string
 	RegisterGRPC       func(grpc.ServiceRegistrar)
+	RegisterHTTP       func(*http.ServeMux)
 	GatewayPublication func() ([]gatewaymeta.RouteMeta, map[string][]byte, error)
 	Init               func(RuntimeContext) error
 	InitDistributed    func(DistributedContext) error
@@ -27,6 +29,7 @@ type GRPCSpec[T any] struct {
 	Name               string
 	Server             T
 	Register           func(grpc.ServiceRegistrar, T)
+	RegisterHTTP       func(*http.ServeMux)
 	GatewayPublication func() ([]gatewaymeta.RouteMeta, map[string][]byte, error)
 	Init               func(RuntimeContext) error
 	InitDistributed    func(DistributedContext) error
@@ -42,6 +45,7 @@ func NewGRPCSpec[T any](spec GRPCSpec[T]) (Spec, error) {
 		RegisterGRPC: func(registrar grpc.ServiceRegistrar) {
 			spec.Register(registrar, spec.Server)
 		},
+		RegisterHTTP:       spec.RegisterHTTP,
 		GatewayPublication: spec.GatewayPublication,
 		Init:               spec.Init,
 		InitDistributed:    spec.InitDistributed,

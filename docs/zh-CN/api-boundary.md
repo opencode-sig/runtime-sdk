@@ -52,6 +52,14 @@
   自定义 DataPlane owner 应调用 `servicekit.NewGeneration`，并保留自己的
   lifecycle 组装逻辑；不要复制 generation 规则，也不要为了复用规则而强行套入
   普通 gRPC 服务模板。
+- HTTP backend Gateway 路由属于声明式 route metadata。服务或平台组件应通过
+  `runtime/gatewaymeta.HTTPProxy` 声明。Gateway 实现应根据
+  `backend.http.service` 解析 registry 实例，并使用实例 metadata 中的
+  `advertise_http_addr` 作为 HTTP upstream 地址；registry instance 的
+  `address` 字段仍然表示 gRPC 地址。
+- `servicekit.Spec.RegisterHTTP` 是基于标准库 `http.ServeMux` 的业务 HTTP
+  handler 注册 hook。它不应要求 Gin、应用 response envelope 或 Gateway
+  专用 handler 包。
 - `runtime/registry.ServiceInstance` 的外部序列化契约使用 snake_case JSON/YAML
   字段，例如 `started_at`、`last_seen`、`data_plane_generation`。registry 或
   discovery 消费方不应依赖 Go 结构体字段名作为存储格式。

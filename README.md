@@ -123,9 +123,17 @@ Gateways to use the managed gRPC service template.
 
 Gateway route specs use explicit public Gateway paths, for example
 `/v1/payments/{id}`. `runtime/gatewaymeta` normalizes slashes but does not add a
-service-name prefix. Gateways should forward by the published
+service-name prefix. gRPC backend routes should forward by the published
 `RouteMeta.GRPC.Service` and `RouteMeta.GRPC.FullMethod`, not by parsing URL
-prefixes.
+prefixes. HTTP backend routes use `gatewaymeta.HTTPProxy`; Gateways should
+resolve `RouteMeta.Backend.HTTP.Service` through registry and proxy to the
+selected instance's `advertise_http_addr` metadata.
+
+Services that own HTTP backend routes can register their upstream handlers with
+`servicekit.Spec.RegisterHTTP` or `GRPCSpec.RegisterHTTP`. The handlers run on
+the service HTTP listener next to runtime endpoints such as `/healthz` and
+`/metrics`, so business paths should stay explicit and be exposed only through
+Gateway metadata.
 
 Route-level authentication whitelist behavior is also part of route metadata.
 When a Gateway enables authentication, dynamic routes should require
@@ -180,7 +188,7 @@ and `headers` protobuf fields can be exposed through `RawStatus` and
 `RawHeaders`. Gateways must not infer raw output from method names or from
 ordinary response fields.
 
-Managed gRPC components expose Prometheus metrics on the service admin
+Managed gRPC components expose Prometheus metrics on the service HTTP listener's
 `/metrics` endpoint. In addition to legacy `runtime_grpc_*` metrics, the SDK
 records common gRPC server metrics such as `grpc_server_started_total`,
 `grpc_server_handled_total`, `grpc_server_handling_seconds`, in-flight request
@@ -192,7 +200,7 @@ histograms.
 `servicekit` rebuilds a service by creating a new DataPlane from the latest
 config, stopping the old generation, and starting the new one. This keeps the
 runtime core simple and predictable for single-process services that reuse the
-same gRPC/admin addresses. It is not a zero-downtime in-process handoff.
+same gRPC/HTTP addresses. It is not a zero-downtime in-process handoff.
 
 The control command channel is bootstrap-level configuration. If the etcd
 endpoints or command prefix change, restart the process so the watcher can move

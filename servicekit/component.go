@@ -20,7 +20,7 @@ func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig) error {
 	server := runtimecomponent.NewGRPCService(runtimecomponent.GRPCConfig{
 		Name:        cfg.Spec.Name,
 		GRPCAddr:    service.GRPCAddr,
-		AdminAddr:   service.AdminAddr,
+		HTTPAddr:    service.HTTPAddr,
 		EnablePprof: service.EnablePprof,
 		HealthChecks: map[string]func(context.Context) error{
 			"runtime": app.Health,
@@ -28,6 +28,7 @@ func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		Register: func(server *grpc.Server) {
 			cfg.Spec.RegisterGRPC(server)
 		},
+		RegisterHTTP: cfg.Spec.RegisterHTTP,
 	}, cfg.Logger)
 	return app.Add(cfg.Spec.Name+"_grpc", server)
 }
@@ -39,9 +40,9 @@ func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		return fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
 	}
 	instance := registry.NewServiceInstance(cfg.Spec.Name, address, map[string]string{
-		"runtime":              strings.TrimSpace(cfg.RuntimeMode),
-		"admin_addr":           service.AdminAddr,
-		"advertise_admin_addr": service.AdvertiseAdminAddr,
+		"runtime":             strings.TrimSpace(cfg.RuntimeMode),
+		"http_addr":           service.HTTPAddr,
+		"advertise_http_addr": service.AdvertiseHTTPAddr,
 	})
 	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewRegistrationComponent(cfg.Registry, instance, cfg.Logger).WithDataPlaneGeneration(cfg.DataPlaneGeneration))
 }

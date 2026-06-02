@@ -20,7 +20,7 @@ When the service starts:
 1. The process loads `servicekit.Config` from a local file, etcd, or another
    bootstrap source chosen by the service.
 2. `servicekit.Run` starts a managed DataPlane.
-3. The DataPlane starts the gRPC server and admin server.
+3. The DataPlane starts the gRPC server and service HTTP listener.
 4. If etcd registry is enabled, the service registers its advertised gRPC
    address.
 5. If Gateway metadata is configured, the service publishes route metadata and
@@ -315,6 +315,36 @@ Gateway implementations should compile `response.raw` metadata against protobuf
 descriptors when routes are loaded. They must not infer raw output from method
 names, URL paths, or the mere presence of `body` / `content_type` fields.
 
+### HTTP Backend Proxy
+
+Services can also publish HTTP backend routes for business HTTP handlers that
+run on the service HTTP listener:
+
+```go
+gatewaymeta.HTTPProxy("payment.http_report", "GET", "/v1/payments/http/report", ServiceName).
+	UpstreamPath("/internal/payments/report").
+	Timeout("3s")
+```
+
+The public path is the Gateway path. `UpstreamPath` is the path on the selected
+service instance. Gateway implementations should resolve `backend.http.service`
+through registry and proxy to the instance metadata `advertise_http_addr`.
+
+The service registers the upstream handler with standard library `net/http`:
+
+```go
+func RegisterHTTP(mux *http.ServeMux, paymentService *service.Service) {
+	mux.HandleFunc("/internal/payments/report", func(w http.ResponseWriter, r *http.Request) {
+		// Return a normal raw HTTP response. The Gateway passes status,
+		// headers, and body through instead of applying the JSON envelope.
+	})
+}
+```
+
+Runtime reserves `/healthz`, `/metrics`, and optional `/debug/pprof/*` on the
+same listener. Business handlers should use their own internal paths and must
+still be exposed through explicit Gateway metadata.
+
 ## Service Spec
 
 `internal/bootstrap/module.go`
@@ -323,6 +353,8 @@ names, URL paths, or the mere presence of `body` / `content_type` fields.
 package bootstrap
 
 import (
+	"net/http"
+
 	"github.com/acme/payment-service/internal/handler"
 	"github.com/acme/payment-service/internal/service"
 	paymentv1 "github.com/acme/payment-service/protobuf/payment/v1"
@@ -337,6 +369,9 @@ func Module() (servicekit.Spec, error) {
 		Name:               ServiceName,
 		Server:             paymentHandler,
 		Register:           paymentv1.RegisterPaymentServiceServer,
+		RegisterHTTP: func(mux *http.ServeMux) {
+			handler.RegisterHTTP(mux, paymentService)
+		},
 		GatewayPublication: GatewayPublication,
 	})
 }
@@ -429,8 +464,8 @@ dial_timeout: 3s
 ```yaml
 grpc_addr: :9003
 advertise_grpc_addr: 127.0.0.1:9003
-admin_addr: :9103
-advertise_admin_addr: 127.0.0.1:9103
+http_addr: :9103
+advertise_http_addr: 127.0.0.1:9103
 enable_pprof: true
 settings:
   payment_provider: sandbox
@@ -446,8 +481,10 @@ Address rules:
 - `grpc_addr` is the local listen address
 - `advertise_grpc_addr` is the address registered for other services and
   Gateway discovery
-- `admin_addr` is the local admin listen address
-- `advertise_admin_addr` is the admin address published for management tools
+- `http_addr` is the local service HTTP listener address for runtime endpoints
+  such as `/healthz`, `/metrics`, and optional pprof
+- `advertise_http_addr` is the HTTP address published for Gateway HTTP backend
+  proxying and management tools
 
 If the service runs inside containers or across machines, the advertised
 addresses should be reachable by other processes, not just by the local host.

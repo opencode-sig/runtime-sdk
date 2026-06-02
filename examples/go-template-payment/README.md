@@ -45,7 +45,7 @@ go run ./examples/go-template-payment/cmd/client
 Expected result: payment returns a JSON response and the internal user lookup
 has succeeded through service discovery.
 
-Admin endpoints:
+Service HTTP listener endpoints:
 
 ```text
 payment health: http://127.0.0.1:9104/healthz
@@ -53,3 +53,34 @@ payment metrics: http://127.0.0.1:9104/metrics
 user health:    http://127.0.0.1:9105/healthz
 user metrics:   http://127.0.0.1:9105/metrics
 ```
+
+Gateway metadata includes both gRPC backend routes and a small HTTP backend
+proxy fixture for a payment-owned business HTTP handler:
+
+```go
+gatewaymeta.HTTPProxy("payment.http_report", "GET", "/v1/payments/http/report", "payment").
+    UpstreamPath("/internal/payments/report")
+```
+
+The upstream handler is registered on the service HTTP listener in
+`internal/payment/bootstrap/module.go`:
+
+```go
+RegisterHTTP: func(mux *http.ServeMux) {
+    handler.RegisterHTTP(mux, paymentService)
+}
+```
+
+`handler.RegisterHTTP` owns the internal HTTP path and can use the same payment
+service object as the gRPC handler:
+
+```go
+mux.HandleFunc("/internal/payments/report", func(w http.ResponseWriter, r *http.Request) {
+    // Build a normal raw HTTP response for the Gateway to pass through.
+})
+```
+
+A Gateway consuming this route should resolve service `payment` through the
+registry, pick an instance, read its `advertise_http_addr` metadata
+(`127.0.0.1:9104` in the sample config), and proxy the request to
+`/internal/payments/report` with raw HTTP passthrough semantics.

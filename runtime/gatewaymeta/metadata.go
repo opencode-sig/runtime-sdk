@@ -1,6 +1,7 @@
 package gatewaymeta
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +11,8 @@ type RouteMeta struct {
 	ID       string          `json:"id"`
 	Enabled  bool            `json:"enabled"`
 	HTTP     HTTPMeta        `json:"http"`
-	GRPC     GRPCMeta        `json:"grpc"`
+	GRPC     GRPCMeta        `json:"grpc,omitempty"`
+	Backend  *BackendMeta    `json:"backend,omitempty"`
 	Binding  Binding         `json:"binding"`
 	Timeout  string          `json:"timeout,omitempty"`
 	Auth     *AuthPolicy     `json:"auth,omitempty"`
@@ -22,12 +24,32 @@ type HTTPMeta struct {
 	Path   string `json:"path"`
 }
 
+const HTTPMethodAny = "ANY"
+
 type GRPCMeta struct {
 	Service      string `json:"service"`
 	FullMethod   string `json:"full_method"`
 	RequestType  string `json:"request_type"`
 	ResponseType string `json:"response_type"`
 	DescriptorID string `json:"descriptor_id"`
+}
+
+type BackendType string
+
+const (
+	BackendTypeGRPC BackendType = "grpc"
+	BackendTypeHTTP BackendType = "http"
+)
+
+type BackendMeta struct {
+	Type BackendType      `json:"type,omitempty"`
+	GRPC *GRPCMeta        `json:"grpc,omitempty"`
+	HTTP *HTTPBackendMeta `json:"http,omitempty"`
+}
+
+type HTTPBackendMeta struct {
+	Service string `json:"service,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
 type Binding struct {
@@ -71,11 +93,52 @@ func cloneAuthPolicy(policy *AuthPolicy) *AuthPolicy {
 	return &clone
 }
 
-// Validate checks whether a Gateway dynamic route has complete HTTP and gRPC mapping metadata.
+func cloneBackendMeta(backend *BackendMeta) *BackendMeta {
+	if backend == nil {
+		return nil
+	}
+	clone := *backend
+	if backend.GRPC != nil {
+		grpc := *backend.GRPC
+		clone.GRPC = &grpc
+	}
+	if backend.HTTP != nil {
+		httpBackend := *backend.HTTP
+		clone.HTTP = &httpBackend
+	}
+	return &clone
+}
+
+// MarshalJSON omits the legacy top-level grpc field for HTTP backend routes.
+func (r RouteMeta) MarshalJSON() ([]byte, error) {
+	type routeMeta RouteMeta
+	out := struct {
+		routeMeta
+		GRPC *GRPCMeta `json:"grpc,omitempty"`
+	}{
+		routeMeta: routeMeta(r),
+	}
+	out.routeMeta.GRPC = GRPCMeta{}
+	if r.BackendType() != BackendTypeHTTP {
+		grpc := r.GRPC
+		out.GRPC = &grpc
+	}
+	return json.Marshal(out)
+}
+
+// BackendType returns the explicit backend type, or the legacy gRPC default.
+func (r RouteMeta) BackendType() BackendType {
+	if r.Backend == nil || strings.TrimSpace(string(r.Backend.Type)) == "" {
+		return BackendTypeGRPC
+	}
+	return r.Backend.Type
+}
+
+// Validate checks whether a Gateway dynamic route has complete HTTP and backend mapping metadata.
 //
 // Gateway validates etcd metadata and monolith local metadata before serving
-// traffic so descriptor id, request type, and FullMethod mistakes fail during
-// startup or reload instead of during a later generic gRPC invocation.
+// traffic so route metadata mistakes fail during startup or reload instead of
+// during a later upstream invocation.
 func (r RouteMeta) Validate() error {
 	if strings.TrimSpace(r.ID) == "" {
 		return fmt.Errorf("route id is required")
@@ -86,30 +149,98 @@ func (r RouteMeta) Validate() error {
 	if strings.TrimSpace(r.HTTP.Path) == "" || !strings.HasPrefix(r.HTTP.Path, "/") {
 		return fmt.Errorf("route %s http path must start with /", r.ID)
 	}
-	if strings.TrimSpace(r.GRPC.Service) == "" {
-		return fmt.Errorf("route %s grpc service is required", r.ID)
-	}
-	if strings.TrimSpace(r.GRPC.FullMethod) == "" || !strings.HasPrefix(r.GRPC.FullMethod, "/") {
-		return fmt.Errorf("route %s grpc full_method must start with /", r.ID)
-	}
-	if strings.TrimSpace(r.GRPC.RequestType) == "" {
-		return fmt.Errorf("route %s grpc request_type is required", r.ID)
-	}
-	if strings.TrimSpace(r.GRPC.ResponseType) == "" {
-		return fmt.Errorf("route %s grpc response_type is required", r.ID)
-	}
-	if strings.TrimSpace(r.GRPC.DescriptorID) == "" {
-		return fmt.Errorf("route %s grpc descriptor_id is required", r.ID)
-	}
 	if r.Timeout != "" {
 		if _, err := r.TimeoutDuration(0); err != nil {
 			return err
 		}
 	}
+
+	switch r.BackendType() {
+	case BackendTypeGRPC:
+		grpc := r.GRPC
+		if r.Backend != nil && r.Backend.GRPC != nil {
+			grpc = *r.Backend.GRPC
+		}
+		if err := validateGRPCMeta(r.ID, grpc); err != nil {
+			return err
+		}
+	case BackendTypeHTTP:
+		if err := r.validateHTTPBackend(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("route %s backend type %q is not supported", r.ID, r.Backend.Type)
+	}
+
 	if r.Response != nil && r.Response.Raw != nil {
 		if strings.TrimSpace(r.Response.Raw.Body) == "" {
 			return fmt.Errorf("route %s raw response body is required", r.ID)
 		}
+	}
+	return nil
+}
+
+func validateGRPCMeta(routeID string, grpc GRPCMeta) error {
+	if strings.TrimSpace(grpc.Service) == "" {
+		return fmt.Errorf("route %s grpc service is required", routeID)
+	}
+	if strings.TrimSpace(grpc.FullMethod) == "" || !strings.HasPrefix(grpc.FullMethod, "/") {
+		return fmt.Errorf("route %s grpc full_method must start with /", routeID)
+	}
+	if strings.TrimSpace(grpc.RequestType) == "" {
+		return fmt.Errorf("route %s grpc request_type is required", routeID)
+	}
+	if strings.TrimSpace(grpc.ResponseType) == "" {
+		return fmt.Errorf("route %s grpc response_type is required", routeID)
+	}
+	if strings.TrimSpace(grpc.DescriptorID) == "" {
+		return fmt.Errorf("route %s grpc descriptor_id is required", routeID)
+	}
+	return nil
+}
+
+func (r RouteMeta) validateHTTPBackend() error {
+	if r.Backend == nil || r.Backend.HTTP == nil {
+		return fmt.Errorf("route %s http backend is required", r.ID)
+	}
+	if !isZeroGRPCMeta(r.GRPC) || r.Backend.GRPC != nil {
+		return fmt.Errorf("route %s http backend must not set grpc metadata", r.ID)
+	}
+	if strings.TrimSpace(r.Backend.HTTP.Service) == "" {
+		return fmt.Errorf("route %s http backend service is required", r.ID)
+	}
+	if strings.TrimSpace(r.Backend.HTTP.Path) != "" {
+		if err := validateHTTPBackendPath(r.ID, r.Backend.HTTP.Path); err != nil {
+			return err
+		}
+	}
+	if len(r.Binding.Path) > 0 || len(r.Binding.Query) > 0 || strings.TrimSpace(r.Binding.Body) != "" {
+		return fmt.Errorf("route %s http backend must not set protobuf binding", r.ID)
+	}
+	if r.Response != nil && r.Response.Raw != nil {
+		return fmt.Errorf("route %s http backend must not set raw response policy", r.ID)
+	}
+	return nil
+}
+
+func isZeroGRPCMeta(grpc GRPCMeta) bool {
+	return strings.TrimSpace(grpc.Service) == "" &&
+		strings.TrimSpace(grpc.FullMethod) == "" &&
+		strings.TrimSpace(grpc.RequestType) == "" &&
+		strings.TrimSpace(grpc.ResponseType) == "" &&
+		strings.TrimSpace(grpc.DescriptorID) == ""
+}
+
+func validateHTTPBackendPath(routeID string, path string) error {
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("route %s http backend path must start with /", routeID)
+	}
+	if strings.Contains(path, "://") || strings.Contains(path, "?") || strings.Contains(path, "#") {
+		return fmt.Errorf("route %s http backend path must not include scheme, host, query, or fragment", routeID)
+	}
+	if strings.Contains(path, "//") {
+		return fmt.Errorf("route %s http backend path must not contain empty segments", routeID)
 	}
 	return nil
 }
@@ -140,5 +271,9 @@ func (r RouteMeta) TimeoutDuration(fallback time.Duration) (time.Duration, error
 //
 // Route indexes should use the normalized method to avoid case-sensitive misses.
 func (h HTTPMeta) NormalizedMethod() string {
-	return strings.ToUpper(strings.TrimSpace(h.Method))
+	method := strings.ToUpper(strings.TrimSpace(h.Method))
+	if method == "*" {
+		return HTTPMethodAny
+	}
+	return method
 }

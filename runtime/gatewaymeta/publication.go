@@ -21,6 +21,7 @@ type GatewayRouteSpec struct {
 	HTTPMethod    string
 	HTTPPath      string
 	Binding       Binding
+	Backend       *BackendMeta
 	TimeoutString string
 	Auth          *AuthPolicy
 	Response      *ResponsePolicy
@@ -47,9 +48,42 @@ func POST(method string, path string) GatewayRouteSpec {
 func HTTP(httpMethod string, method string, path string) GatewayRouteSpec {
 	return GatewayRouteSpec{
 		Method:     method,
-		HTTPMethod: httpMethod,
+		HTTPMethod: normalizeHTTPMethod(httpMethod),
 		HTTPPath:   path,
 	}
+}
+
+// HTTPProxy creates an HTTP reverse proxy route declaration.
+//
+// HTTP proxy routes do not use protobuf descriptors or protobuf bindings.
+// Gateways resolve service instances through registry metadata and use the
+// selected instance's advertise_http_addr as the upstream address.
+func HTTPProxy(id string, method string, path string, service string) GatewayRouteSpec {
+	return GatewayRouteSpec{
+		ID:         strings.TrimSpace(id),
+		HTTPMethod: normalizeHTTPMethod(method),
+		HTTPPath:   path,
+		Backend: &BackendMeta{
+			Type: BackendTypeHTTP,
+			HTTP: &HTTPBackendMeta{
+				Service: strings.TrimSpace(service),
+			},
+		},
+	}
+}
+
+// UpstreamPath sets the HTTP backend path.
+//
+// Empty means the Gateway should use the matched public route path.
+func (r GatewayRouteSpec) UpstreamPath(path string) GatewayRouteSpec {
+	if r.Backend == nil {
+		r.Backend = &BackendMeta{Type: BackendTypeHTTP}
+	}
+	if r.Backend.HTTP == nil {
+		r.Backend.HTTP = &HTTPBackendMeta{}
+	}
+	r.Backend.HTTP.Path = normalizeHTTPBackendPath(path)
+	return r
 }
 
 // Path binds an HTTP path parameter to a protobuf request field.
@@ -158,24 +192,45 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 	if service == "" {
 		return nil, nil, fmt.Errorf("gateway service is required")
 	}
-	if spec.File == nil {
-		return nil, nil, fmt.Errorf("gateway proto file descriptor is required")
-	}
 	if len(spec.Routes) == 0 {
 		return nil, nil, fmt.Errorf("gateway routes are required")
 	}
 
-	descriptorSet, err := GatewayDescriptorSet(spec.File)
-	if err != nil {
-		return nil, nil, err
+	needsDescriptor := false
+	for _, routeSpec := range spec.Routes {
+		if !routeSpec.isHTTPBackend() {
+			needsDescriptor = true
+			break
+		}
 	}
-	descriptorID, err := DescriptorID(spec.File)
-	if err != nil {
-		return nil, nil, err
+
+	descriptors := map[string][]byte{}
+	if needsDescriptor {
+		if spec.File == nil {
+			return nil, nil, fmt.Errorf("gateway proto file descriptor is required")
+		}
+		descriptorSet, err := GatewayDescriptorSet(spec.File)
+		if err != nil {
+			return nil, nil, err
+		}
+		descriptorID, err := DescriptorID(spec.File)
+		if err != nil {
+			return nil, nil, err
+		}
+		descriptors[descriptorID] = descriptorSet
 	}
 
 	routes := make([]RouteMeta, 0, len(spec.Routes))
 	for _, routeSpec := range spec.Routes {
+		if routeSpec.isHTTPBackend() {
+			route, err := newHTTPBackendRoute(routeSpec)
+			if err != nil {
+				return nil, nil, err
+			}
+			routes = append(routes, route)
+			continue
+		}
+
 		// Route id defaults to service + RPC method for cross-deployment stability.
 		// Services may still set an explicit ID for long-term compatibility.
 		routeID := strings.TrimSpace(routeSpec.ID)
@@ -201,7 +256,76 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 		routes = append(routes, route)
 	}
 
-	return routes, map[string][]byte{descriptorID: descriptorSet}, nil
+	if err := validatePublishedRoutes(routes); err != nil {
+		return nil, nil, err
+	}
+	return routes, descriptors, nil
+}
+
+func validatePublishedRoutes(routes []RouteMeta) error {
+	ids := make(map[string]struct{}, len(routes))
+	httpRoutes := make(map[string]string, len(routes))
+	anyRoutes := make(map[string]string, len(routes))
+	concreteRoutes := make(map[string]string, len(routes))
+	for _, route := range routes {
+		id := strings.TrimSpace(route.ID)
+		if _, ok := ids[id]; ok {
+			return fmt.Errorf("gateway route id %q is duplicated", id)
+		}
+		ids[id] = struct{}{}
+
+		method := route.HTTP.NormalizedMethod()
+		path := strings.TrimSpace(route.HTTP.Path)
+		httpKey := method + " " + path
+		if existingID, ok := httpRoutes[httpKey]; ok {
+			return fmt.Errorf("gateway route %s conflicts with %s on %s", route.ID, existingID, httpKey)
+		}
+		if method == HTTPMethodAny {
+			if existingID, ok := anyRoutes[path]; ok {
+				return fmt.Errorf("gateway route %s conflicts with %s on %s", route.ID, existingID, httpKey)
+			}
+			if existingID, ok := concreteRoutes[path]; ok {
+				return fmt.Errorf("gateway route %s conflicts with %s on %s", route.ID, existingID, httpKey)
+			}
+			anyRoutes[path] = route.ID
+		} else {
+			if existingID, ok := anyRoutes[path]; ok {
+				return fmt.Errorf("gateway route %s conflicts with %s on %s", route.ID, existingID, httpKey)
+			}
+			if _, ok := concreteRoutes[path]; !ok {
+				concreteRoutes[path] = route.ID
+			}
+		}
+		httpRoutes[httpKey] = route.ID
+	}
+	return nil
+}
+
+func (r GatewayRouteSpec) isHTTPBackend() bool {
+	return r.Backend != nil && r.Backend.Type == BackendTypeHTTP
+}
+
+func newHTTPBackendRoute(spec GatewayRouteSpec) (RouteMeta, error) {
+	route := RouteMeta{
+		ID:      strings.TrimSpace(spec.ID),
+		Enabled: !spec.Disabled,
+		HTTP: HTTPMeta{
+			Method: spec.HTTPMethod,
+			Path:   gatewayRoutePath(spec.HTTPPath),
+		},
+		Binding:  spec.Binding,
+		Backend:  cloneBackendMeta(spec.Backend),
+		Timeout:  spec.TimeoutString,
+		Auth:     cloneAuthPolicy(spec.Auth),
+		Response: cloneResponsePolicy(spec.Response),
+	}
+	if route.Backend != nil && route.Backend.HTTP != nil {
+		route.Backend.HTTP.Path = normalizeHTTPBackendPath(route.Backend.HTTP.Path)
+	}
+	if err := route.Validate(); err != nil {
+		return RouteMeta{}, err
+	}
+	return route, nil
 }
 
 // gatewayRoutePath normalizes an explicit public Gateway path.
@@ -211,6 +335,25 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 func gatewayRoutePath(routePath string) string {
 	path := "/" + strings.Trim(strings.TrimSpace(routePath), "/")
 	return path
+}
+
+func normalizeHTTPBackendPath(routePath string) string {
+	routePath = strings.TrimSpace(routePath)
+	if routePath == "" {
+		return ""
+	}
+	if strings.Contains(routePath, "://") || strings.Contains(routePath, "?") || strings.Contains(routePath, "#") || strings.Contains(routePath, "//") {
+		return routePath
+	}
+	return gatewayRoutePath(routePath)
+}
+
+func normalizeHTTPMethod(method string) string {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method == "*" {
+		return HTTPMethodAny
+	}
+	return method
 }
 
 // defaultGatewayRouteID builds a stable route id from service name and RPC method.

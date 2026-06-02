@@ -106,9 +106,16 @@ Gateway 等自定义 DataPlane owner 应使用 `servicekit.NewGeneration` 生成
 runtime 身份契约，不要求 Gateway 套用普通 gRPC 微服务模板。
 
 Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`。
-`runtime/gatewaymeta` 只规范化斜杠，不会自动添加服务名前缀。Gateway
-应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
-转发，而不是从 URL 前缀解析服务名。
+`runtime/gatewaymeta` 只规范化斜杠，不会自动添加服务名前缀。gRPC backend
+路由应该根据发布后的 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod`
+转发，而不是从 URL 前缀解析服务名。HTTP backend 路由通过
+`gatewaymeta.HTTPProxy` 声明；Gateway 应根据 `RouteMeta.Backend.HTTP.Service`
+解析 registry 实例，并代理到所选实例 metadata 中的 `advertise_http_addr`。
+
+拥有 HTTP backend 路由的服务可以通过 `servicekit.Spec.RegisterHTTP` 或
+`GRPCSpec.RegisterHTTP` 注册 upstream handler。这些 handler 运行在服务 HTTP
+listener 上，与 `/healthz`、`/metrics` 等 runtime endpoints 共用 listener；
+业务路径应保持显式，并且只通过 Gateway metadata 暴露。
 
 路由级认证白名单也属于 route metadata。Gateway 启用认证时，动态路由默认
 应该需要认证；服务必须通过 `Public()` 显式声明白名单路由：
@@ -157,7 +164,7 @@ gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
 `RawStatus`、`RawHeaders` 声明。Gateway 不应根据方法名或普通 response
 字段名猜测 raw 输出。
 
-受管理 gRPC component 会在服务 admin `/metrics` 暴露 Prometheus 指标。
+受管理 gRPC component 会在服务 HTTP listener 的 `/metrics` 暴露 Prometheus 指标。
 除兼容旧看板的 `runtime_grpc_*` 指标外，SDK 默认记录常用 gRPC server
 指标，包括 `grpc_server_started_total`、`grpc_server_handled_total`、
 `grpc_server_handling_seconds`、in-flight gauge、panic 计数、deadline

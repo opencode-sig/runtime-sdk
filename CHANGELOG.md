@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 - 2026-06-02
+
+- Renamed managed service HTTP configuration from `admin_addr` /
+  `advertise_admin_addr` to `http_addr` / `advertise_http_addr`. The service
+  HTTP listener still serves `/healthz`, `/metrics`, and optional pprof, and
+  `advertise_http_addr` is now the registry metadata address used by HTTP
+  backend proxy routes.
+- Added Gateway HTTP backend route metadata and `gatewaymeta.HTTPProxy` for
+  declaring HTTP upstream routes without protobuf descriptors.
+- Added `gatewaymeta.HTTPMethodAny` support so HTTP backend routes can publish
+  `ANY` method routes; `ANY + path` conflicts with concrete methods on the
+  same path.
+- Added optional `servicekit.Spec.RegisterHTTP` / `GRPCSpec.RegisterHTTP` so
+  services can register business HTTP handlers on the service HTTP listener for
+  HTTP backend proxy routes.
 
 ## v0.5.4 - 2026-06-02
 

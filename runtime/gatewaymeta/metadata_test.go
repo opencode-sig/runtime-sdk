@@ -35,8 +35,56 @@ func TestRouteMetaAllowsPublicAuthPolicy(t *testing.T) {
 	}
 }
 
+func TestRouteMetaValidateHTTPBackend(t *testing.T) {
+	route := testHTTPBackendRoute()
+	if err := route.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendBinding(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.Binding.Body = "*"
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendRawResponse(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.Response = &ResponsePolicy{Raw: defaultRawResponsePolicy("text/plain")}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendGRPCMetadata(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.GRPC = GRPCMeta{Service: "legacy"}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsInvalidHTTPBackendPath(t *testing.T) {
+	tests := []string{
+		"http://legacy/orders",
+		"/orders?debug=1",
+		"/orders//search",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			route := testHTTPBackendRoute()
+			route.Backend.HTTP.Path = path
+			if err := route.Validate(); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func testRoute(descriptorID string) RouteMeta {
-	return RouteMeta{
+	route := RouteMeta{
 		ID:      "test.get",
 		Enabled: true,
 		HTTP: HTTPMeta{
@@ -52,6 +100,27 @@ func testRoute(descriptorID string) RouteMeta {
 		},
 		Binding: Binding{
 			Path: map[string]string{"id": "id"},
+		},
+		Timeout: "3s",
+	}
+	route.Backend = &BackendMeta{Type: BackendTypeGRPC, GRPC: &route.GRPC}
+	return route
+}
+
+func testHTTPBackendRoute() RouteMeta {
+	return RouteMeta{
+		ID:      "legacy.orders_search",
+		Enabled: true,
+		HTTP: HTTPMeta{
+			Method: http.MethodPost,
+			Path:   "/v1/legacy/orders/search",
+		},
+		Backend: &BackendMeta{
+			Type: BackendTypeHTTP,
+			HTTP: &HTTPBackendMeta{
+				Service: "legacy-api",
+				Path:    "/orders/search",
+			},
 		},
 		Timeout: "3s",
 	}

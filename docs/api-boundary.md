@@ -72,6 +72,14 @@ in a release note.
   business logic. Custom DataPlane owners should call `servicekit.NewGeneration`
   and keep their own lifecycle assembly instead of duplicating generation
   rules or forcing themselves through managed gRPC service templates.
+- HTTP backend Gateway routes are declarative route metadata. Services or
+  platform components should declare them through `runtime/gatewaymeta.HTTPProxy`.
+  Gateway implementations should resolve `backend.http.service` through
+  registry and use instance metadata `advertise_http_addr` as the HTTP upstream
+  address; the registry instance `address` field remains the gRPC address.
+- `servicekit.Spec.RegisterHTTP` is a standard-library `http.ServeMux` hook for
+  service-owned HTTP handlers. It must not require Gin, application response
+  envelopes, or Gateway-specific handler packages.
 - The external serialization contract for `runtime/registry.ServiceInstance`
   uses snake_case JSON/YAML fields such as `started_at`, `last_seen`, and
   `data_plane_generation`. Registry and discovery consumers must not depend on

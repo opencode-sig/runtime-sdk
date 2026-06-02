@@ -63,6 +63,16 @@ func NewDescriptorRoute(spec DescriptorRouteSpec) (RouteMeta, error) {
 		Auth:     cloneAuthPolicy(spec.Auth),
 		Response: cloneResponsePolicy(spec.Response),
 	}
+	route.Backend = &BackendMeta{
+		Type: BackendTypeGRPC,
+		GRPC: &GRPCMeta{
+			Service:      route.GRPC.Service,
+			FullMethod:   route.GRPC.FullMethod,
+			RequestType:  route.GRPC.RequestType,
+			ResponseType: route.GRPC.ResponseType,
+			DescriptorID: route.GRPC.DescriptorID,
+		},
+	}
 	if err := route.Validate(); err != nil {
 		return RouteMeta{}, err
 	}

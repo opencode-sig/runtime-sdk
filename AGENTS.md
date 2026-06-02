@@ -5,7 +5,7 @@
 - 在本仓库内工作的自动化 agent 或维护者。
 - 希望把独立 Go gRPC 微服务接入 runtime-sdk / go-template 运行时体系的服务开发者。
 
-runtime-sdk 是一个应用无关的公开运行时 SDK。它的职责是承接业务服务不应该重复实现的运行时能力：gRPC 服务容器、admin 端点、健康检查、指标、tracing、日志、配置加载、注册发现、Gateway 元数据发布、控制命令和 DataPlane rebuild。业务服务仍然拥有自己的 protobuf、handler、业务逻辑和部署侧配置加载策略。
+runtime-sdk 是一个应用无关的公开运行时 SDK。它的职责是承接业务服务不应该重复实现的运行时能力：gRPC 服务容器、服务 HTTP listener、健康检查、指标、tracing、日志、配置加载、注册发现、Gateway 元数据发布、控制命令和 DataPlane rebuild。业务服务仍然拥有自己的 protobuf、handler、业务逻辑和部署侧配置加载策略。
 
 ## 项目定位
 
@@ -20,7 +20,7 @@ runtime-sdk 的核心接入模型是：
 服务进程会按配置组装：
 
 - gRPC server。
-- admin HTTP server：`/healthz`、`/metrics`，可选 `/debug/pprof/*`。
+- 服务 HTTP listener：`/healthz`、`/metrics`，可选 `/debug/pprof/*`。
 - gRPC health service。
 - Prometheus metrics。
 - OpenTelemetry trace context propagation。
@@ -44,7 +44,8 @@ runtime-sdk 的核心接入模型是：
 
 - `Run(ctx, RunOptions)`：启动独立受管理 gRPC 服务进程。
 - `Spec`：声明服务名、gRPC 注册函数、Gateway 元数据发布函数，以及初始化 hook。
-- `GRPCSpec[T]` / `NewGRPCSpec`：从 generated protobuf registrar 构造 `Spec`。
+- `Spec.RegisterHTTP`：可选，用标准库 `http.ServeMux` 在服务 HTTP listener 上注册业务 HTTP handler。
+- `GRPCSpec[T]` / `NewGRPCSpec`：从 generated protobuf registrar 构造 `Spec`，并可携带可选 `RegisterHTTP`。
 - `Config`：服务运行时配置契约。
 - `RuntimeContext`：普通初始化 hook 可见的上下文。
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
@@ -58,7 +59,7 @@ runtime-sdk 的核心接入模型是：
 
 `servicekit` 会接管以下运行时问题：
 
-- gRPC/admin server lifecycle。
+- gRPC server 和服务 HTTP listener lifecycle。
 - registry registration。
 - Gateway metadata publication。
 - health/metrics/tracing。
@@ -77,6 +78,8 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 
 - `NewGatewayPublication(GatewayPublicationSpec)`。
 - `GET(method, path)`、`POST(method, path)`、`HTTP(httpMethod, method, path)`。
+- `HTTPProxy(id, method, path, service)`：声明 HTTP backend 代理路由。
+- `GatewayRouteSpec.UpstreamPath(path)`：声明 HTTP backend upstream path；为空时 Gateway 使用匹配到的公网 path。
 - `GatewayRouteSpec.Path(param, field)`。
 - `GatewayRouteSpec.Query(param, field)`。
 - `GatewayRouteSpec.Body(value)`。
@@ -94,6 +97,8 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - SDK 只规范化路径斜杠，不会自动添加 `/{service}` 前缀。
 - 如果应用需要 `/payment`、`/admin` 等业务前缀，应在 route path 中显式声明。
 - Gateway 应根据 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod` 转发，不应从 URL 前缀反推服务名。
+- HTTP backend 路由应设置 `RouteMeta.Backend.Type=http` 和 `RouteMeta.Backend.HTTP.Service`。Gateway 根据 service 解析 registry 实例，并使用实例 metadata 中的 `advertise_http_addr` 作为 upstream 地址。
+- HTTP method 支持 `ANY` 表示匹配所有方法；`*` 会规范化为 `ANY`。`ANY + path` 与任何具体 method 的同 path 路由冲突。
 - descriptor id 默认使用 proto package，要求 proto package 稳定。
 - 路由认证白名单必须通过 `Public()` 写入 route metadata。Gateway 不应维护独立 path whitelist；未声明 public 的动态路由在 Gateway 启用认证时默认需要认证。
 - 默认响应策略是不生成 `response` 元数据，并由 Gateway 包标准 JSON envelope。
@@ -196,8 +201,8 @@ rebuild 语义是 stop-start replacement：
 - 自动安装 gRPC health service。
 - 自动安装 tracing server interceptor。
 - 自动安装 metrics server interceptor。
-- 可启动 admin HTTP server。
-- admin HTTP server 只提供 `/healthz`、`/metrics` 和可选 pprof，不承载业务 HTTP 路由。
+- 可启动服务 HTTP listener。
+- 服务 HTTP listener 默认提供 `/healthz`、`/metrics` 和可选 pprof；业务 HTTP handler 可通过 `Spec.RegisterHTTP` 注册，代理路径必须通过 Gateway route metadata 显式声明。
 
 ### `observability`
 
@@ -567,8 +572,8 @@ dial_timeout: 3s
 ```yaml
 grpc_addr: :9004
 advertise_grpc_addr: 127.0.0.1:9004
-admin_addr: :9104
-advertise_admin_addr: 127.0.0.1:9104
+http_addr: :9104
+advertise_http_addr: 127.0.0.1:9104
 enable_pprof: false
 settings: {}
 ```
@@ -602,8 +607,9 @@ metadata:
 - `configs/infra/*.yaml`：可选 infra 配置，由 `servicekit.Infra` 按需创建。
 - `service.grpc_addr`：本进程监听地址，必填。
 - `service.advertise_grpc_addr`：注册中心和控制命令 instance id 使用的地址；为空时回退到 `grpc_addr`。
-- `service.admin_addr`：admin HTTP 监听地址；为空则不启动 admin HTTP。
-- `service.enable_pprof`：是否在 admin server 上挂载 pprof。
+- `service.http_addr`：服务 HTTP listener 地址；为空则不启动 HTTP listener。
+- `service.advertise_http_addr`：Gateway HTTP backend proxy 使用的 advertised HTTP upstream 地址。
+- `service.enable_pprof`：是否在服务 HTTP listener 上挂载 pprof。
 - `settings`：业务私有配置，SDK 不解释，业务用 `DecodeSettings[T]` 解码。
 
 这种模式下，etcd 中保存同一套逻辑 key，例如 `/runtime/config/configs/runtime.yaml` 和 `/runtime/config/configs/service/payment.yaml`。如果 key 不存在，约定式 loader 会使用同名本地文件自动 seed；已有 key 永不覆盖。只 seed 当前进程服务名对应的 `configs/service/<service>.yaml`，不扫描其他服务配置。
@@ -675,8 +681,8 @@ Gateway 消费方应：
 实例 metadata 包含：
 
 - `runtime`：`distributed` 或 `monolith`。
-- `admin_addr`。
-- `advertise_admin_addr`。
+- `http_addr`。
+- `advertise_http_addr`。
 
 业务服务不应该直接依赖 registry key 结构。需要访问其他服务时，用 `servicekit.Clients`：
 
@@ -791,8 +797,8 @@ infra:
 
 观测：
 
-- admin `/healthz` 返回 JSON，失败时 HTTP 503。
-- admin `/metrics` 暴露 Prometheus metrics。
+- 服务 HTTP listener 的 `/healthz` 返回 JSON，失败时 HTTP 503。
+- 服务 HTTP listener 的 `/metrics` 暴露 Prometheus metrics。
 - gRPC server/client 默认传播 W3C trace context。
 - pprof 只在 `service.enable_pprof: true` 时开启。
 

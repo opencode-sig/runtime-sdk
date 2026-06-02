@@ -18,6 +18,9 @@ func GatewayPublication() ([]gatewaymeta.RouteMeta, map[string][]byte, error) {
 			gatewaymeta.POST("CreatePayment", "/v1/payments").
 				Body("*").
 				Timeout("3s"),
+			gatewaymeta.HTTPProxy("payment.http_report", "GET", "/v1/payments/http/report", ServiceName).
+				UpstreamPath("/internal/payments/report").
+				Timeout("3s"),
 		},
 	})
 }

@@ -52,8 +52,8 @@ bucket: payment
 		"configs/service/payment.yaml": []byte(`
 grpc_addr: :9001
 advertise_grpc_addr: 127.0.0.1:9001
-admin_addr: :9101
-advertise_admin_addr: 127.0.0.1:9101
+http_addr: :9101
+advertise_http_addr: 127.0.0.1:9101
 settings:
   provider: static
 `),
@@ -77,6 +77,9 @@ settings:
 	}
 	if cfg.Service.GRPCAddr != ":9001" {
 		t.Fatalf("grpc addr = %q, want :9001", cfg.Service.GRPCAddr)
+	}
+	if cfg.Service.HTTPAddr != ":9101" || cfg.Service.AdvertiseHTTPAddr != "127.0.0.1:9101" {
+		t.Fatalf("http addrs = %q/%q, want :9101/127.0.0.1:9101", cfg.Service.HTTPAddr, cfg.Service.AdvertiseHTTPAddr)
 	}
 	if cfg.Runtime.Config.Root != "." {
 		t.Fatalf("runtime root = %q, want .", cfg.Runtime.Config.Root)
@@ -209,7 +212,7 @@ func TestConventionConfigLoaderErrors(t *testing.T) {
 			name: "missing grpc addr",
 			data: map[string][]byte{
 				"configs/runtime.yaml":         conventionRuntimeYAML("file"),
-				"configs/service/payment.yaml": []byte("admin_addr: :9101\n"),
+				"configs/service/payment.yaml": []byte("http_addr: :9101\n"),
 			},
 			service:   "payment",
 			wantError: "validate configs/service/payment.yaml: grpc_addr is required",

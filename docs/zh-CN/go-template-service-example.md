@@ -16,7 +16,7 @@
 
 1. 进程从本地文件、etcd 或其他 bootstrap source 加载 `servicekit.Config`。
 2. `servicekit.Run` 启动受管理的 DataPlane。
-3. DataPlane 启动 gRPC server 和 admin server。
+3. DataPlane 启动 gRPC server 和服务 HTTP listener。
 4. 如果启用 etcd registry，服务注册自己的 advertised gRPC address。
 5. 如果配置了 Gateway metadata，服务发布 route metadata 和 protobuf descriptors。
 6. 如果配置了 etcd config 和 control command，服务监听 rebuild 命令，并用最新配置重建 DataPlane。
@@ -258,6 +258,36 @@ Gateway 实现应在加载路由时基于 protobuf descriptor 静态编译
 `response.raw` 元数据，不能根据方法名、URL path 或仅仅存在
 `body` / `content_type` 字段来猜测 raw 输出。
 
+### HTTP backend 代理
+
+服务也可以为运行在服务 HTTP listener 上的业务 HTTP handler 发布 HTTP backend
+路由：
+
+```go
+gatewaymeta.HTTPProxy("payment.http_report", "GET", "/v1/payments/http/report", ServiceName).
+	UpstreamPath("/internal/payments/report").
+	Timeout("3s")
+```
+
+公网 path 是 Gateway 对外路径。`UpstreamPath` 是选中服务实例上的 upstream
+路径。Gateway 实现应根据 `backend.http.service` 解析 registry 实例，并代理到
+实例 metadata 中的 `advertise_http_addr`。
+
+服务用标准库 `net/http` 注册 upstream handler：
+
+```go
+func RegisterHTTP(mux *http.ServeMux, paymentService *service.Service) {
+	mux.HandleFunc("/internal/payments/report", func(w http.ResponseWriter, r *http.Request) {
+		// 返回普通 raw HTTP response。Gateway 原样透传 status、headers 和 body，
+		// 不套 JSON envelope。
+	})
+}
+```
+
+同一个 listener 上 runtime 保留 `/healthz`、`/metrics` 和可选
+`/debug/pprof/*`。业务 handler 应使用自己的内部路径，并且仍然必须通过显式
+Gateway metadata 暴露。
+
 ## 服务模块
 
 `internal/bootstrap/module.go`
@@ -266,6 +296,8 @@ Gateway 实现应在加载路由时基于 protobuf descriptor 静态编译
 package bootstrap
 
 import (
+	"net/http"
+
 	"google.golang.org/grpc"
 
 	"github.com/acme/payment-service/internal/handler"
@@ -282,6 +314,9 @@ func Module() (servicekit.Spec, error) {
 		Name: "payment",
 		RegisterGRPC: func(registrar grpc.ServiceRegistrar) {
 			paymentv1.RegisterPaymentServiceServer(registrar, h)
+		},
+		RegisterHTTP: func(mux *http.ServeMux) {
+			handler.RegisterHTTP(mux, svc)
 		},
 		GatewayPublication: GatewayPublication,
 	})
@@ -388,8 +423,8 @@ dial_timeout: 3s
 ```yaml
 grpc_addr: :9004
 advertise_grpc_addr: 127.0.0.1:9004
-admin_addr: :9104
-advertise_admin_addr: 127.0.0.1:9104
+http_addr: :9104
+advertise_http_addr: 127.0.0.1:9104
 settings:
   payment_provider: sandbox
 ```
@@ -417,7 +452,7 @@ etcd 模式会从配置中心读取同名逻辑 key。如果 key 不存在且本
 
 如果 `configs/runtime.yaml` 中的 `config.provider` 为 `etcd`，并配置了 `control.commands_prefix`，`servicekit.Run` 会启动 control watcher。合成后的 `servicekit.Config` 会把这些值放到 `runtime.config` 和 `runtime.control`。runtime-admin 或其他管理端可以发布 `rebuild` 或 `restart` 命令，服务收到后会重建 DataPlane。
 
-rebuild 语义是 stop-start replacement：创建新 DataPlane，停止旧 generation，再启动新 generation。同一进程复用相同 gRPC/admin 端口时，不承诺零停机。
+rebuild 语义是 stop-start replacement：创建新 DataPlane，停止旧 generation，再启动新 generation。同一进程复用相同 gRPC/HTTP 端口时，不承诺零停机。
 
 ## 通过服务名访问其他 gRPC 服务
 

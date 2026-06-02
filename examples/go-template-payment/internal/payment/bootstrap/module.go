@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/handler"
 	paymentservice "github.com/opencode-sig/runtime-sdk/examples/go-template-payment/internal/payment/service"
@@ -15,9 +16,12 @@ func Module() (servicekit.Spec, error) {
 	paymentHandler := handler.New(paymentService)
 
 	return servicekit.NewGRPCSpec(servicekit.GRPCSpec[paymentv1.PaymentServiceServer]{
-		Name:               ServiceName,
-		Server:             paymentHandler,
-		Register:           paymentv1.RegisterPaymentServiceServer,
+		Name:     ServiceName,
+		Server:   paymentHandler,
+		Register: paymentv1.RegisterPaymentServiceServer,
+		RegisterHTTP: func(mux *http.ServeMux) {
+			handler.RegisterHTTP(mux, paymentService)
+		},
 		GatewayPublication: GatewayPublication,
 		InitDistributed: func(ctx servicekit.DistributedContext) error {
 			if ctx.Clients != nil {

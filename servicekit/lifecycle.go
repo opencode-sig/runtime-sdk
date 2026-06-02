@@ -45,7 +45,7 @@ func (c serviceComponent) AddTo(app *lifecycle.Runtime) error {
 	return AddToLifecycle(app, c.cfg)
 }
 
-// AddToLifecycle adds one service gRPC/admin server, optional registry entry
+// AddToLifecycle adds one service gRPC server, optional HTTP listener, optional registry entry
 // and optional Gateway metadata publisher to a lifecycle graph.
 func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 	if app == nil {
