@@ -26,8 +26,11 @@ type AuthenticateRequest struct {
 	CredentialType string                 `protobuf:"bytes,1,opt,name=credential_type,json=credentialType,proto3" json:"credential_type,omitempty"`
 	Credential     string                 `protobuf:"bytes,2,opt,name=credential,proto3" json:"credential,omitempty"`
 	Context        *RequestContext        `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Optional downstream standard AuthService name selected by the caller.
+	// Empty means the receiving AuthService should use its own default behavior.
+	TargetService string `protobuf:"bytes,4,opt,name=target_service,json=targetService,proto3" json:"target_service,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AuthenticateRequest) Reset() {
@@ -79,6 +82,13 @@ func (x *AuthenticateRequest) GetContext() *RequestContext {
 		return x.Context
 	}
 	return nil
+}
+
+func (x *AuthenticateRequest) GetTargetService() string {
+	if x != nil {
+		return x.TargetService
+	}
+	return ""
 }
 
 type RequestContext struct {
@@ -321,13 +331,14 @@ var File_security_v1_auth_proto protoreflect.FileDescriptor
 
 const file_security_v1_auth_proto_rawDesc = "" +
 	"\n" +
-	"\x16security/v1/auth.proto\x12\x13runtime.security.v1\"\x9d\x01\n" +
+	"\x16security/v1/auth.proto\x12\x13runtime.security.v1\"\xc4\x01\n" +
 	"\x13AuthenticateRequest\x12'\n" +
 	"\x0fcredential_type\x18\x01 \x01(\tR\x0ecredentialType\x12\x1e\n" +
 	"\n" +
 	"credential\x18\x02 \x01(\tR\n" +
 	"credential\x12=\n" +
-	"\acontext\x18\x03 \x01(\v2#.runtime.security.v1.RequestContextR\acontext\"\xcc\x02\n" +
+	"\acontext\x18\x03 \x01(\v2#.runtime.security.v1.RequestContextR\acontext\x12%\n" +
+	"\x0etarget_service\x18\x04 \x01(\tR\rtargetService\"\xcc\x02\n" +
 	"\x0eRequestContext\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +

@@ -10,7 +10,9 @@ import (
 	securityv1 "github.com/opencode-sig/runtime-sdk/protobuf/security/v1"
 	"github.com/opencode-sig/runtime-sdk/security/authn"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/status"
 )
 
 func TestAuthenticatorAllowed(t *testing.T) {
@@ -62,6 +64,50 @@ func TestAuthenticatorDenied(t *testing.T) {
 	}
 }
 
+func TestAuthenticatorPassesTargetService(t *testing.T) {
+	received := make(chan *securityv1.AuthenticateRequest, 1)
+	server := startAuthServer(t, fakeAuthServer{received: received})
+
+	authenticator := NewAuthenticator(staticResolver(server.addr), "auth", time.Second)
+	defer func() { _ = authenticator.Close() }()
+
+	_, err := authenticator.Authenticate(context.Background(), authn.Request{
+		CredentialType: "bearer",
+		Credential:     "dev-token",
+		TargetService:  "legacy-auth",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate error = %v", err)
+	}
+	req := <-received
+	if req.GetTargetService() != "legacy-auth" {
+		t.Fatalf("target_service = %q, want legacy-auth", req.GetTargetService())
+	}
+}
+
+func TestAuthenticatorEmptyTargetServiceKeepsDefaultRequest(t *testing.T) {
+	received := make(chan *securityv1.AuthenticateRequest, 1)
+	server := startAuthServer(t, fakeAuthServer{received: received})
+
+	authenticator := NewAuthenticator(staticResolver(server.addr), "auth", time.Second)
+	defer func() { _ = authenticator.Close() }()
+
+	decision, err := authenticator.Authenticate(context.Background(), authn.Request{
+		CredentialType: "bearer",
+		Credential:     "dev-token",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate error = %v", err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("decision = %#v, want allowed", decision)
+	}
+	req := <-received
+	if req.GetTargetService() != "" {
+		t.Fatalf("target_service = %q, want empty", req.GetTargetService())
+	}
+}
+
 func TestAuthenticatorUnavailable(t *testing.T) {
 	authenticator := NewAuthenticator(nil, "auth", time.Second)
 	_, err := authenticator.Authenticate(context.Background(), authn.Request{
@@ -88,19 +134,44 @@ func TestAuthenticatorTimeout(t *testing.T) {
 	}
 }
 
-type fakeAuthServer struct {
-	securityv1.UnimplementedAuthServiceServer
-	resp  *securityv1.AuthenticateResponse
-	delay time.Duration
+func TestAuthenticatorPermissionDeniedError(t *testing.T) {
+	server := startAuthServer(t, fakeAuthServer{
+		err: status.Error(codes.PermissionDenied, "forbidden"),
+	})
+
+	authenticator := NewAuthenticator(staticResolver(server.addr), "auth", time.Second)
+	defer func() { _ = authenticator.Close() }()
+
+	_, err := authenticator.Authenticate(context.Background(), authn.Request{
+		CredentialType: "bearer",
+		Credential:     "dev-token",
+	})
+	if !errors.Is(err, authn.ErrPermissionDenied) {
+		t.Fatalf("error = %v, want permission denied", err)
+	}
 }
 
-func (s fakeAuthServer) Authenticate(ctx context.Context, _ *securityv1.AuthenticateRequest) (*securityv1.AuthenticateResponse, error) {
+type fakeAuthServer struct {
+	securityv1.UnimplementedAuthServiceServer
+	resp     *securityv1.AuthenticateResponse
+	err      error
+	delay    time.Duration
+	received chan *securityv1.AuthenticateRequest
+}
+
+func (s fakeAuthServer) Authenticate(ctx context.Context, req *securityv1.AuthenticateRequest) (*securityv1.AuthenticateResponse, error) {
 	if s.delay > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(s.delay):
 		}
+	}
+	if s.received != nil {
+		s.received <- req
+	}
+	if s.err != nil {
+		return nil, s.err
 	}
 	if s.resp != nil {
 		return s.resp, nil

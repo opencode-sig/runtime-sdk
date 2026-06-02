@@ -12,6 +12,10 @@ message AuthenticateRequest {
   string credential_type = 1;
   string credential = 2;
   RequestContext context = 3;
+
+  // Optional downstream standard AuthService name selected by the caller.
+  // Empty means the receiving AuthService should use its own default behavior.
+  string target_service = 4;
 }
 
 message RequestContext {

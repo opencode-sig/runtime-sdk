@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.5.4 - 2026-06-02
+
+- Added `AuthenticateRequest.target_service` and
+  `authn.Request.TargetService` so callers can ask a standard AuthService to
+  delegate authentication to a selected downstream standard AuthService without
+  adding runtime SDK config.
+
 ## v0.5.3 - 2026-05-30
 
 - Added `servicekit.NewGeneration` so custom DataPlane owners can reuse the

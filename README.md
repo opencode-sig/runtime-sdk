@@ -157,6 +157,13 @@ must not parse credentials or call Auth directly; they should read identity from
 metadata such as `x-auth-subject`, `x-tenant-id`, and safe
 `x-auth-attr-*` values.
 
+Callers may set `authn.Request.TargetService` to ask the receiving standard
+AuthService to delegate this authentication request to a selected downstream
+standard AuthService, such as `legacy-auth` or `oidc-auth`. An empty value means
+the receiving AuthService should use its own default behavior. The SDK only
+defines and forwards this protocol field; it does not maintain downstream auth
+service lists or enforce delegation policy.
+
 Ordinary Gateway routes use the application's standard JSON response envelope.
 Routes that need browser-renderable or file-like output must opt in explicitly:
 

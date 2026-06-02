@@ -12,6 +12,7 @@ type Authenticator interface {
 type Request struct {
 	CredentialType string
 	Credential     string
+	TargetService  string
 	RouteID        string
 	HTTPMethod     string
 	HTTPPath       string

@@ -38,6 +38,9 @@
   完成认证，而不是引用应用本地 Auth protobuf 契约。Auth 拒绝应通过
   `AuthenticateResponse.allowed=false` 表达；gRPC error 只表示 transport
   或基础设施失败。
+- `AuthenticateRequest.target_service` 和 `authn.Request.TargetService`
+  是应用无关的委托提示。SDK 只将它们透传给接收方标准 AuthService，
+  不能维护下游 AuthService 列表，也不能执行委托策略。
 - 业务服务不能解析 credential，也不能依赖 Auth 服务内部实现。业务服务
   只应读取 Gateway 生成的 `x-auth-subject`、`x-tenant-id` 和安全的
   `x-auth-attr-*` 等身份 metadata。

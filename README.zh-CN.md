@@ -137,6 +137,11 @@ Auth 服务实现 `protobuf/security/v1.AuthService`。业务服务不应解析
 credential，也不应直接调用 Auth；只应读取 `x-auth-subject`、
 `x-tenant-id` 和安全的 `x-auth-attr-*` 等身份 metadata。
 
+调用方可以设置 `authn.Request.TargetService`，请求接收方标准 AuthService
+将本次认证委托给指定的下游标准 AuthService，例如 `legacy-auth` 或
+`oidc-auth`。空值表示接收方使用自己的默认认证逻辑。SDK 只定义并透传
+这个协议字段，不维护下游 auth 服务列表，也不执行委托策略。
+
 普通 Gateway 路由默认由应用网关包标准 JSON envelope。需要浏览器直接渲染
 或文件型输出的路由必须显式声明 raw response：
 

@@ -57,6 +57,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, req authn.Request) (au
 	resp, err := client.Authenticate(authCtx, &securityv1.AuthenticateRequest{
 		CredentialType: req.CredentialType,
 		Credential:     req.Credential,
+		TargetService:  req.TargetService,
 		Context: &securityv1.RequestContext{
 			RequestId:  req.RequestID,
 			RouteId:    req.RouteID,

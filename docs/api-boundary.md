@@ -56,6 +56,10 @@ in a release note.
   protobuf contract. Auth rejection should be represented by
   `AuthenticateResponse.allowed=false`; gRPC errors are reserved for transport
   or infrastructure failures.
+- `AuthenticateRequest.target_service` and `authn.Request.TargetService` are
+  application-neutral delegation hints. The SDK forwards them to the receiving
+  standard AuthService but must not maintain downstream AuthService lists or
+  enforce delegation policy.
 - Business services must not parse credentials or depend on Auth service
   internals. They should read Gateway-issued identity metadata such as
   `x-auth-subject`, `x-tenant-id`, and safe `x-auth-attr-*` values.
