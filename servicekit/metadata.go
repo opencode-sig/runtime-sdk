@@ -18,7 +18,7 @@ import (
 	gatewaymeta "github.com/opencode-sig/runtime-sdk/runtime/gatewaymeta"
 )
 
-var metadataReconcileInterval = 30 * time.Second
+var metadataReconcileInterval = 5 * time.Minute
 var metadataReconcileTimeout = 30 * time.Second
 
 type MetadataPrefixes struct {

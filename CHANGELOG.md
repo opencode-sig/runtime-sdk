@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.2 - 2026-06-04
+
+- Increased Gateway metadata reconcile interval to 5 minutes to reduce
+  unnecessary etcd writes and Gateway watch churn while keeping periodic
+  metadata self-healing.
+
 ## v0.7.1 - 2026-06-04
 
 - Increased Gateway metadata reconcile publish timeout to 30 seconds so larger
