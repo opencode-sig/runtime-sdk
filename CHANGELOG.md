@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.3 - 2026-06-04
+
+- Changed Gateway metadata reconcile to skip etcd `Put` calls when descriptor or
+  route content is unchanged, reducing unnecessary Gateway watch events.
+
 ## v0.7.2 - 2026-06-04
 
 - Increased Gateway metadata reconcile interval to 5 minutes to reduce
