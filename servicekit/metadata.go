@@ -19,7 +19,7 @@ import (
 )
 
 var metadataReconcileInterval = 30 * time.Second
-var metadataReconcileTimeout = 3 * time.Second
+var metadataReconcileTimeout = 30 * time.Second
 
 type MetadataPrefixes struct {
 	RoutesPrefix      string

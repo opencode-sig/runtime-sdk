@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 - 2026-06-04
+
+- Increased Gateway metadata reconcile publish timeout to 30 seconds so larger
+  descriptor sets and slower etcd writes have enough time to complete.
+
 ## v0.7.0 - 2026-06-04
 
 - Split managed service HTTP probes into `/healthz` local liveness and
