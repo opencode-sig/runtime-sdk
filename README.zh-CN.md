@@ -114,8 +114,10 @@ Gateway route spec 使用显式公网网关路径，例如 `/v1/payments/{id}`�
 
 拥有 HTTP backend 路由的服务可以通过 `servicekit.Spec.RegisterHTTP` 或
 `GRPCSpec.RegisterHTTP` 注册 upstream handler。这些 handler 运行在服务 HTTP
-listener 上，与 `/healthz`、`/metrics` 等 runtime endpoints 共用 listener；
-业务路径应保持显式，并且只通过 Gateway metadata 暴露。
+listener 上，与 `/healthz`、`/readyz`、`/metrics` 等 runtime endpoints 共用
+listener；业务路径应保持显式，并且只通过 Gateway metadata 暴露。`/healthz`
+表示本地 liveness，不会因为 etcd、registry 或 Gateway metadata 发布暂时异常而失败；
+业务关键依赖应注册到 `/readyz` 的 readiness checks。
 
 路由级认证白名单也属于 route metadata。Gateway 启用认证时，动态路由默认
 应该需要认证；服务必须通过 `Public()` 显式声明白名单路由：
@@ -168,7 +170,9 @@ gatewaymeta.POST("RenderHTML", "/v1/payments/html/render").
 除兼容旧看板的 `runtime_grpc_*` 指标外，SDK 默认记录常用 gRPC server
 指标，包括 `grpc_server_started_total`、`grpc_server_handled_total`、
 `grpc_server_handling_seconds`、in-flight gauge、panic 计数、deadline
-计数和 protobuf 消息大小直方图。
+计数和 protobuf 消息大小直方图。控制面退化通过日志以及
+`runtime_control_plane_status`、`runtime_control_plane_errors_total`、
+`runtime_control_plane_recoveries_total` 暴露，不默认让 `/healthz` 失败。
 
 ## Rebuild 语义
 

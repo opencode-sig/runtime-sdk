@@ -1,6 +1,7 @@
 package servicekit
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,6 +21,7 @@ type Spec struct {
 	RegisterGRPC       func(grpc.ServiceRegistrar)
 	RegisterHTTP       func(*http.ServeMux)
 	GatewayPublication func() ([]gatewaymeta.RouteMeta, map[string][]byte, error)
+	ReadinessChecks    map[string]func(context.Context) error
 	Init               func(RuntimeContext) error
 	InitDistributed    func(DistributedContext) error
 }
@@ -31,6 +33,7 @@ type GRPCSpec[T any] struct {
 	Register           func(grpc.ServiceRegistrar, T)
 	RegisterHTTP       func(*http.ServeMux)
 	GatewayPublication func() ([]gatewaymeta.RouteMeta, map[string][]byte, error)
+	ReadinessChecks    map[string]func(context.Context) error
 	Init               func(RuntimeContext) error
 	InitDistributed    func(DistributedContext) error
 }
@@ -47,6 +50,7 @@ func NewGRPCSpec[T any](spec GRPCSpec[T]) (Spec, error) {
 		},
 		RegisterHTTP:       spec.RegisterHTTP,
 		GatewayPublication: spec.GatewayPublication,
+		ReadinessChecks:    spec.ReadinessChecks,
 		Init:               spec.Init,
 		InitDistributed:    spec.InitDistributed,
 	})
@@ -65,6 +69,7 @@ func NewSpec(spec Spec) (Spec, error) {
 		return Spec{}, fmt.Errorf("service %s gateway publication is required", name)
 	}
 	spec.Name = name
+	spec.ReadinessChecks = cloneChecks(spec.ReadinessChecks)
 	return spec, nil
 }
 
@@ -73,4 +78,22 @@ func (s Spec) GatewayMetadata() ([]gatewaymeta.RouteMeta, map[string][]byte, err
 		return nil, nil, fmt.Errorf("service %s gateway publication is required", s.Name)
 	}
 	return s.GatewayPublication()
+}
+
+func cloneChecks(checks map[string]func(context.Context) error) map[string]func(context.Context) error {
+	if len(checks) == 0 {
+		return nil
+	}
+	copied := make(map[string]func(context.Context) error, len(checks))
+	for name, check := range checks {
+		name = strings.TrimSpace(name)
+		if name == "" || check == nil {
+			continue
+		}
+		copied[name] = check
+	}
+	if len(copied) == 0 {
+		return nil
+	}
+	return copied
 }

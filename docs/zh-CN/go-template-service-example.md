@@ -284,8 +284,10 @@ func RegisterHTTP(mux *http.ServeMux, paymentService *service.Service) {
 }
 ```
 
-同一个 listener 上 runtime 保留 `/healthz`、`/metrics` 和可选
-`/debug/pprof/*`。业务 handler 应使用自己的内部路径，并且仍然必须通过显式
+同一个 listener 上 runtime 保留 `/healthz`、`/readyz`、`/metrics` 和可选
+`/debug/pprof/*`。`/healthz` 表示本地 liveness，不会因为 etcd、registry 或
+Gateway metadata 发布暂时异常而失败；业务关键依赖可以注册到 `/readyz` 的
+readiness checks。业务 handler 应使用自己的内部路径，并且仍然必须通过显式
 Gateway metadata 暴露。
 
 ## 服务模块

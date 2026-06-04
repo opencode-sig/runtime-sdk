@@ -22,11 +22,14 @@ import (
 type GRPCConfig struct {
 	Name     string
 	GRPCAddr string
-	// HTTPAddr is the service HTTP listener for /healthz, /metrics, and optional pprof.
-	HTTPAddr     string
-	EnablePprof  bool
-	Register     func(server *grpc.Server)
-	RegisterHTTP func(mux *http.ServeMux)
+	// HTTPAddr is the service HTTP listener for /healthz, /readyz, /metrics, and optional pprof.
+	HTTPAddr        string
+	EnablePprof     bool
+	Register        func(server *grpc.Server)
+	RegisterHTTP    func(mux *http.ServeMux)
+	ReadinessChecks map[string]func(context.Context) error
+	ControlPlane    *metrics.ControlPlaneMetrics
+	// HealthChecks is kept for compatibility and is evaluated by /readyz.
 	HealthChecks map[string]func(context.Context) error
 }
 
@@ -42,12 +45,14 @@ type GRPCService struct {
 // NewGRPCService creates a lifecycle-managed gRPC service component.
 //
 // The component installs tracing, metrics, RPC health, and optionally a service
-// HTTP listener for /healthz, /metrics, and pprof.
+// HTTP listener for /healthz, /readyz, /metrics, and pprof.
 func NewGRPCService(cfg GRPCConfig, logger *applogger.Logger) *GRPCService {
+	serviceMetrics := metrics.New(cfg.Name)
+	serviceMetrics.MustRegister(cfg.ControlPlane.Collectors()...)
 	return &GRPCService{
 		cfg:     cfg,
 		logger:  logger,
-		metrics: metrics.New(cfg.Name),
+		metrics: serviceMetrics,
 	}
 }
 
@@ -142,19 +147,25 @@ func (s *GRPCService) Health(ctx context.Context) error {
 
 // startHTTP starts the service HTTP listener.
 //
-// Runtime reserves /healthz, /metrics, and optional pprof paths on this
+// Runtime reserves /healthz, /readyz, /metrics, and optional pprof paths on this
 // listener. Business HTTP traffic must still be declared through Gateway
 // metadata before a Gateway proxies to this address.
 func (s *GRPCService) startHTTP() error {
 	mux := http.NewServeMux()
-	checker := health.New()
-	checker.Add("self", func(ctx context.Context) error { return s.Health(ctx) })
+	liveness := health.New()
+	liveness.Add("self", func(ctx context.Context) error { return s.Health(ctx) })
+	readiness := health.New()
+	readiness.Add("self", func(ctx context.Context) error { return s.Health(ctx) })
 	for name, check := range s.cfg.HealthChecks {
-		checker.Add(name, check)
+		readiness.Add(name, check)
+	}
+	for name, check := range s.cfg.ReadinessChecks {
+		readiness.Add(name, check)
 	}
 
 	mux.Handle("/metrics", s.metrics.Handler())
-	mux.HandleFunc("/healthz", checker.Handler())
+	mux.HandleFunc("/healthz", liveness.Handler())
+	mux.HandleFunc("/readyz", readiness.Handler())
 	if s.cfg.EnablePprof {
 		mountPprof(mux)
 	}

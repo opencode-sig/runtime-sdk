@@ -80,6 +80,13 @@ in a release note.
 - `servicekit.Spec.RegisterHTTP` is a standard-library `http.ServeMux` hook for
   service-owned HTTP handlers. It must not require Gin, application response
   envelopes, or Gateway-specific handler packages.
+- Service HTTP `/healthz` is local liveness. Service HTTP `/readyz` is local
+  readiness plus service-declared critical dependency checks. etcd, registry,
+  Gateway metadata publication, and control watchers are control-plane concerns
+  and must not fail these endpoints by default. They should be surfaced through
+  structured logs and control-plane metrics such as
+  `runtime_control_plane_status`, `runtime_control_plane_errors_total`, and
+  `runtime_control_plane_recoveries_total`.
 - The external serialization contract for `runtime/registry.ServiceInstance`
   uses snake_case JSON/YAML fields such as `started_at`, `last_seen`, and
   `data_plane_generation`. Registry and discovery consumers must not depend on

@@ -20,7 +20,7 @@ runtime-sdk 的核心接入模型是：
 服务进程会按配置组装：
 
 - gRPC server。
-- 服务 HTTP listener：`/healthz`、`/metrics`，可选 `/debug/pprof/*`。
+- 服务 HTTP listener：`/healthz`、`/readyz`、`/metrics`，可选 `/debug/pprof/*`。
 - gRPC health service。
 - Prometheus metrics。
 - OpenTelemetry trace context propagation。
@@ -45,7 +45,8 @@ runtime-sdk 的核心接入模型是：
 - `Run(ctx, RunOptions)`：启动独立受管理 gRPC 服务进程。
 - `Spec`：声明服务名、gRPC 注册函数、Gateway 元数据发布函数，以及初始化 hook。
 - `Spec.RegisterHTTP`：可选，用标准库 `http.ServeMux` 在服务 HTTP listener 上注册业务 HTTP handler。
-- `GRPCSpec[T]` / `NewGRPCSpec`：从 generated protobuf registrar 构造 `Spec`，并可携带可选 `RegisterHTTP`。
+- `Spec.ReadinessChecks`：可选，声明业务关键依赖检查，暴露到服务 HTTP listener 的 `/readyz`；etcd、registry、Gateway metadata 和 control watcher 这类控制面依赖默认不应让 `/healthz` 或 `/readyz` 失败。
+- `GRPCSpec[T]` / `NewGRPCSpec`：从 generated protobuf registrar 构造 `Spec`，并可携带可选 `RegisterHTTP` 和 `ReadinessChecks`。
 - `Config`：服务运行时配置契约。
 - `RuntimeContext`：普通初始化 hook 可见的上下文。
 - `DistributedContext`：分布式运行时初始化 hook 可见的上下文，包含 etcd、registry、discovery-backed clients 等资源。
@@ -202,7 +203,7 @@ rebuild 语义是 stop-start replacement：
 - 自动安装 tracing server interceptor。
 - 自动安装 metrics server interceptor。
 - 可启动服务 HTTP listener。
-- 服务 HTTP listener 默认提供 `/healthz`、`/metrics` 和可选 pprof；业务 HTTP handler 可通过 `Spec.RegisterHTTP` 注册，代理路径必须通过 Gateway route metadata 显式声明。
+- 服务 HTTP listener 默认提供 `/healthz`、`/readyz`、`/metrics` 和可选 pprof；`/healthz` 是本地 liveness，`/readyz` 是本地 readiness 加服务显式声明的关键依赖检查。业务 HTTP handler 可通过 `Spec.RegisterHTTP` 注册，代理路径必须通过 Gateway route metadata 显式声明。
 
 ### `observability`
 
@@ -797,8 +798,9 @@ infra:
 
 观测：
 
-- 服务 HTTP listener 的 `/healthz` 返回 JSON，失败时 HTTP 503。
-- 服务 HTTP listener 的 `/metrics` 暴露 Prometheus metrics。
+- 服务 HTTP listener 的 `/healthz` 返回本地 liveness JSON，失败时 HTTP 503；etcd、registry、Gateway metadata 和 control watcher 异常默认不影响 `/healthz`。
+- 服务 HTTP listener 的 `/readyz` 返回本地 readiness JSON，包含 `Spec.ReadinessChecks` 声明的业务关键依赖检查，失败时 HTTP 503。
+- 服务 HTTP listener 的 `/metrics` 暴露 Prometheus metrics；控制面退化通过 `runtime_control_plane_status`、`runtime_control_plane_errors_total`、`runtime_control_plane_recoveries_total` 和结构化日志暴露，不默认让 `/healthz` 失败。
 - gRPC server/client 默认传播 W3C trace context。
 - pprof 只在 `service.enable_pprof: true` 时开启。
 

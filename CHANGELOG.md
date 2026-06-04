@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 - 2026-06-04
+
+- Split managed service HTTP probes into `/healthz` local liveness and
+  `/readyz` readiness. `servicekit.Spec` and `GRPCSpec` now accept optional
+  `ReadinessChecks`; etcd, registry, Gateway metadata publication, and control
+  watchers no longer fail service liveness by default.
+- Added control-plane logs and Prometheus metrics for registry and Gateway
+  metadata degradation and recovery:
+  `runtime_control_plane_status`, `runtime_control_plane_errors_total`, and
+  `runtime_control_plane_recoveries_total`.
+
 ## v0.6.0 - 2026-06-02
 
 - Renamed managed service HTTP configuration from `admin_addr` /

@@ -60,6 +60,12 @@
 - `servicekit.Spec.RegisterHTTP` 是基于标准库 `http.ServeMux` 的业务 HTTP
   handler 注册 hook。它不应要求 Gin、应用 response envelope 或 Gateway
   专用 handler 包。
+- 服务 HTTP `/healthz` 表示本地 liveness；服务 HTTP `/readyz` 表示本地
+  readiness 加服务显式声明的关键依赖检查。etcd、registry、Gateway metadata
+  发布和 control watcher 属于控制面问题，默认不应让这两个 endpoint 失败。
+  这些问题应通过结构化日志和 `runtime_control_plane_status`、
+  `runtime_control_plane_errors_total`、`runtime_control_plane_recoveries_total`
+  等控制面指标暴露。
 - `runtime/registry.ServiceInstance` 的外部序列化契约使用 snake_case JSON/YAML
   字段，例如 `started_at`、`last_seen`、`data_plane_generation`。registry 或
   discovery 消费方不应依赖 Go 结构体字段名作为存储格式。

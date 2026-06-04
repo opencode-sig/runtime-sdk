@@ -131,9 +131,12 @@ selected instance's `advertise_http_addr` metadata.
 
 Services that own HTTP backend routes can register their upstream handlers with
 `servicekit.Spec.RegisterHTTP` or `GRPCSpec.RegisterHTTP`. The handlers run on
-the service HTTP listener next to runtime endpoints such as `/healthz` and
-`/metrics`, so business paths should stay explicit and be exposed only through
-Gateway metadata.
+the service HTTP listener next to runtime endpoints such as `/healthz`,
+`/readyz`, and `/metrics`, so business paths should stay explicit and be
+exposed only through Gateway metadata. `/healthz` is local liveness and does not
+fail just because etcd, registry, or Gateway metadata publication is degraded;
+business-critical dependencies should be registered as readiness checks for
+`/readyz`.
 
 Route-level authentication whitelist behavior is also part of route metadata.
 When a Gateway enables authentication, dynamic routes should require
@@ -193,7 +196,10 @@ Managed gRPC components expose Prometheus metrics on the service HTTP listener's
 records common gRPC server metrics such as `grpc_server_started_total`,
 `grpc_server_handled_total`, `grpc_server_handling_seconds`, in-flight request
 gauges, panic counters, deadline counters, and protobuf message-size
-histograms.
+histograms. Control-plane degradation is exposed through logs and
+`runtime_control_plane_status`, `runtime_control_plane_errors_total`, and
+`runtime_control_plane_recoveries_total` instead of failing `/healthz` by
+default.
 
 ## Rebuild Semantics
 

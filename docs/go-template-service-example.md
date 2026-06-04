@@ -341,8 +341,11 @@ func RegisterHTTP(mux *http.ServeMux, paymentService *service.Service) {
 }
 ```
 
-Runtime reserves `/healthz`, `/metrics`, and optional `/debug/pprof/*` on the
-same listener. Business handlers should use their own internal paths and must
+Runtime reserves `/healthz`, `/readyz`, `/metrics`, and optional
+`/debug/pprof/*` on the same listener. `/healthz` is local liveness and does
+not fail just because etcd, registry, or Gateway metadata publication is
+degraded. Business-critical dependencies can be declared as readiness checks
+for `/readyz`. Business handlers should use their own internal paths and must
 still be exposed through explicit Gateway metadata.
 
 ## Service Spec
@@ -482,7 +485,7 @@ Address rules:
 - `advertise_grpc_addr` is the address registered for other services and
   Gateway discovery
 - `http_addr` is the local service HTTP listener address for runtime endpoints
-  such as `/healthz`, `/metrics`, and optional pprof
+  such as `/healthz`, `/readyz`, `/metrics`, and optional pprof
 - `advertise_http_addr` is the HTTP address published for Gateway HTTP backend
   proxying and management tools
 

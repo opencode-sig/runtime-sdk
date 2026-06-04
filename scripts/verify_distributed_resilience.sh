@@ -8,6 +8,8 @@ ETCD_CONTAINER="${ETCD_CONTAINER:-etcd}"
 REGISTRY_PREFIX="${REGISTRY_PREFIX:-/runtime/registry}"
 PAYMENT_HEALTH="${PAYMENT_HEALTH:-http://127.0.0.1:9104/healthz}"
 USER_HEALTH="${USER_HEALTH:-http://127.0.0.1:9105/healthz}"
+PAYMENT_READY="${PAYMENT_READY:-http://127.0.0.1:9104/readyz}"
+USER_READY="${USER_READY:-http://127.0.0.1:9105/readyz}"
 TMP_DIR="$(mktemp -d)"
 SERVICE_PID=""
 STOPPED_ETCD="false"
@@ -117,6 +119,8 @@ SERVICE_PID="$!"
 
 wait_for_http_status "payment" "$PAYMENT_HEALTH" "200"
 wait_for_http_status "user" "$USER_HEALTH" "200"
+wait_for_http_status "payment readiness" "$PAYMENT_READY" "200"
+wait_for_http_status "user readiness" "$USER_READY" "200"
 wait_for_registry_keys 2
 go run ./cmd/client/main.go >/dev/null
 
@@ -126,14 +130,18 @@ go run ./cmd/client/main.go >/dev/null
 
 docker stop "$ETCD_CONTAINER" >/dev/null
 STOPPED_ETCD="true"
-wait_for_http_status "payment" "$PAYMENT_HEALTH" "503"
-wait_for_http_status "user" "$USER_HEALTH" "503"
+wait_for_http_status "payment" "$PAYMENT_HEALTH" "200"
+wait_for_http_status "user" "$USER_HEALTH" "200"
+wait_for_http_status "payment readiness" "$PAYMENT_READY" "200"
+wait_for_http_status "user readiness" "$USER_READY" "200"
 
 docker restart "$ETCD_CONTAINER" >/dev/null
 STOPPED_ETCD="false"
 wait_for_etcd
 wait_for_http_status "payment" "$PAYMENT_HEALTH" "200"
 wait_for_http_status "user" "$USER_HEALTH" "200"
+wait_for_http_status "payment readiness" "$PAYMENT_READY" "200"
+wait_for_http_status "user readiness" "$USER_READY" "200"
 wait_for_registry_keys 2
 go run ./cmd/client/main.go >/dev/null
 

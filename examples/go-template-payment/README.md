@@ -49,8 +49,10 @@ Service HTTP listener endpoints:
 
 ```text
 payment health: http://127.0.0.1:9104/healthz
+payment ready:  http://127.0.0.1:9104/readyz
 payment metrics: http://127.0.0.1:9104/metrics
 user health:    http://127.0.0.1:9105/healthz
+user ready:     http://127.0.0.1:9105/readyz
 user metrics:   http://127.0.0.1:9105/metrics
 ```
 

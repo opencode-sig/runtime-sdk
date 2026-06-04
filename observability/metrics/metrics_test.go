@@ -203,6 +203,37 @@ func TestUnaryServerInterceptorRecordsPanic(t *testing.T) {
 	}
 }
 
+func TestControlPlaneMetricsRecordsStatusErrorsAndRecoveries(t *testing.T) {
+	m := New("payment")
+	controlPlane := NewControlPlaneMetrics("payment")
+	m.MustRegister(controlPlane.Collectors()...)
+
+	controlPlane.SetStatus("registry", false)
+	controlPlane.RecordError("registry", "renew")
+	controlPlane.RecordRecovery("registry", "renew")
+
+	if got := metricValue(t, m, "runtime_control_plane_status", map[string]string{
+		"service":   "payment",
+		"component": "registry",
+	}); got != 0 {
+		t.Fatalf("control plane status = %v, want 0", got)
+	}
+	if !hasMetric(m, "runtime_control_plane_errors_total", map[string]string{
+		"service":   "payment",
+		"component": "registry",
+		"operation": "renew",
+	}) {
+		t.Fatal("missing control-plane error metric")
+	}
+	if !hasMetric(m, "runtime_control_plane_recoveries_total", map[string]string{
+		"service":   "payment",
+		"component": "registry",
+		"operation": "renew",
+	}) {
+		t.Fatal("missing control-plane recovery metric")
+	}
+}
+
 func hasMetric(m *Metrics, name string, labels map[string]string) bool {
 	families, err := m.Gather()
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	runtimemetrics "github.com/opencode-sig/runtime-sdk/observability/metrics"
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
@@ -24,7 +25,7 @@ func TestAddServiceRegistrationPublishesHTTPMetadata(t *testing.T) {
 		Spec:        Spec{Name: "payment"},
 		Registry:    reg,
 		RuntimeMode: "distributed",
-	}); err != nil {
+	}, runtimemetrics.NewControlPlaneMetrics("payment")); err != nil {
 		t.Fatalf("add registration: %v", err)
 	}
 	if err := app.Start(t.Context()); err != nil {

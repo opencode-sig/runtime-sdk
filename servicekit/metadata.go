@@ -6,12 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
+	"github.com/opencode-sig/runtime-sdk/logger"
+	runtimemetrics "github.com/opencode-sig/runtime-sdk/observability/metrics"
 	"github.com/opencode-sig/runtime-sdk/runtime/defaults"
 	gatewaymeta "github.com/opencode-sig/runtime-sdk/runtime/gatewaymeta"
 )
+
+var metadataReconcileInterval = 30 * time.Second
+var metadataReconcileTimeout = 3 * time.Second
 
 type MetadataPrefixes struct {
 	RoutesPrefix      string
@@ -24,6 +32,13 @@ type MetadataPublisher struct {
 	prefixes    MetadataPrefixes
 	routes      []gatewaymeta.RouteMeta
 	descriptors map[string][]byte
+	logger      *logger.Logger
+	metrics     *runtimemetrics.ControlPlaneMetrics
+	mu          sync.Mutex
+	cancel      context.CancelFunc
+	done        chan struct{}
+	published   atomic.Bool
+	healthy     atomic.Bool
 }
 
 func NewMetadataPublisher(client *clientv3.Client, prefixes MetadataPrefixes, routes []gatewaymeta.RouteMeta, descriptors map[string][]byte) *MetadataPublisher {
@@ -39,10 +54,43 @@ func NewMetadataPublisher(client *clientv3.Client, prefixes MetadataPrefixes, ro
 	}
 }
 
+func (p *MetadataPublisher) WithLogger(log *logger.Logger) *MetadataPublisher {
+	if p != nil {
+		p.logger = log
+	}
+	return p
+}
+
+func (p *MetadataPublisher) WithControlPlaneMetrics(metrics *runtimemetrics.ControlPlaneMetrics) *MetadataPublisher {
+	if p != nil {
+		p.metrics = metrics
+	}
+	return p
+}
+
 func (p *MetadataPublisher) Start(ctx context.Context) error {
 	if p.client == nil {
 		return errors.New("etcd client is required")
 	}
+	if err := p.publish(ctx); err != nil {
+		p.markError("publish")
+		p.logPublishFailed(ctx, err)
+		return err
+	}
+	p.published.Store(true)
+	p.markHealthy()
+	p.logPublished(ctx, "gateway metadata published")
+	reconcileCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	p.mu.Lock()
+	p.cancel = cancel
+	p.done = done
+	p.mu.Unlock()
+	go p.reconcileLoop(reconcileCtx, done)
+	return nil
+}
+
+func (p *MetadataPublisher) publish(ctx context.Context) error {
 	for id, data := range p.descriptors {
 		if strings.TrimSpace(id) == "" || len(data) == 0 {
 			return fmt.Errorf("descriptor %q is invalid", id)
@@ -67,23 +115,113 @@ func (p *MetadataPublisher) Start(ctx context.Context) error {
 }
 
 func (p *MetadataPublisher) Stop(ctx context.Context) error {
+	p.mu.Lock()
+	cancel := p.cancel
+	done := p.done
+	p.cancel = nil
+	p.done = nil
+	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	p.published.Store(false)
+	p.markUnhealthy()
 	return nil
 }
 
 func (p *MetadataPublisher) Health(ctx context.Context) error {
-	if p.client == nil {
-		return errors.New("etcd client is required")
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
-	for _, route := range p.routes {
-		resp, err := p.client.Get(ctx, metadataRouteKey(p.prefixes, route.ID))
-		if err != nil {
-			return err
-		}
-		if len(resp.Kvs) == 0 {
-			return fmt.Errorf("route metadata %s is not published", route.ID)
-		}
+	if !p.published.Load() {
+		return errors.New("gateway metadata is not published")
 	}
 	return nil
+}
+
+func (p *MetadataPublisher) reconcileLoop(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(metadataReconcileInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ctx.Err() != nil {
+				return
+			}
+			publishCtx, cancel := context.WithTimeout(context.Background(), metadataReconcileTimeout)
+			err := p.publish(publishCtx)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				p.markError("publish")
+				p.logPublishFailed(ctx, err)
+				continue
+			}
+			p.published.Store(true)
+			p.markRecovered("publish")
+		}
+	}
+}
+
+func (p *MetadataPublisher) markHealthy() {
+	p.healthy.Store(true)
+	p.metrics.SetStatus("gateway_metadata", true)
+}
+
+func (p *MetadataPublisher) markUnhealthy() {
+	p.healthy.Store(false)
+	p.metrics.SetStatus("gateway_metadata", false)
+}
+
+func (p *MetadataPublisher) markError(operation string) {
+	p.healthy.Store(false)
+	p.metrics.SetStatus("gateway_metadata", false)
+	p.metrics.RecordError("gateway_metadata", operation)
+}
+
+func (p *MetadataPublisher) markRecovered(operation string) {
+	if !p.healthy.Swap(true) {
+		p.metrics.RecordRecovery("gateway_metadata", operation)
+		p.logPublished(context.Background(), "gateway metadata publication recovered")
+	}
+	p.metrics.SetStatus("gateway_metadata", true)
+}
+
+func (p *MetadataPublisher) logPublished(ctx context.Context, msg string) {
+	if p.logger == nil {
+		return
+	}
+	p.logger.Info(ctx, msg,
+		logger.Event("gateway_metadata_published"),
+		logger.String("routes_prefix", p.prefixes.RoutesPrefix),
+		logger.String("descriptors_prefix", p.prefixes.DescriptorsPrefix),
+	)
+}
+
+func (p *MetadataPublisher) logPublishFailed(ctx context.Context, err error) {
+	if p.logger == nil {
+		return
+	}
+	fields := append(logger.Fields(
+		logger.Event("gateway_metadata_publish_failed"),
+		logger.String("routes_prefix", p.prefixes.RoutesPrefix),
+		logger.String("descriptors_prefix", p.prefixes.DescriptorsPrefix),
+	), logger.ErrorFields(err)...)
+	p.logger.Warn(ctx, "gateway metadata publish failed", fields...)
 }
 
 func metadataRouteKey(prefixes MetadataPrefixes, id string) string {

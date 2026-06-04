@@ -5,9 +5,11 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	applogger "github.com/opencode-sig/runtime-sdk/logger"
+	runtimemetrics "github.com/opencode-sig/runtime-sdk/observability/metrics"
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
 
@@ -19,8 +21,10 @@ type RegistrationComponent struct {
 	instance     registry.ServiceInstance
 	registration registry.Registration
 	logger       *applogger.Logger
+	metrics      *runtimemetrics.ControlPlaneMetrics
 	mu           sync.Mutex
 	renewMu      sync.Mutex
+	healthy      atomic.Bool
 	cancelRenew  context.CancelFunc
 	renewDone    chan struct{}
 }
@@ -51,6 +55,13 @@ func (c *RegistrationComponent) WithDataPlaneGeneration(generation string) *Regi
 	return c
 }
 
+func (c *RegistrationComponent) WithControlPlaneMetrics(metrics *runtimemetrics.ControlPlaneMetrics) *RegistrationComponent {
+	if c != nil {
+		c.metrics = metrics
+	}
+	return c
+}
+
 // Start registers the instance in registry.
 func (c *RegistrationComponent) Start(ctx context.Context) error {
 	if c.registry == nil {
@@ -67,6 +78,7 @@ func (c *RegistrationComponent) Start(ctx context.Context) error {
 	c.cancelRenew = cancel
 	c.renewDone = done
 	c.mu.Unlock()
+	c.markHealthy()
 	go c.renewLoop(renewCtx, done)
 	c.logRegistered(ctx, "service registered")
 	return nil
@@ -106,10 +118,8 @@ func (c *RegistrationComponent) Stop(ctx context.Context) error {
 	c.mu.Lock()
 	cancel := c.cancelRenew
 	done := c.renewDone
-	registration := c.registration
 	c.cancelRenew = nil
 	c.renewDone = nil
-	c.registration = nil
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -121,17 +131,34 @@ func (c *RegistrationComponent) Stop(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	c.mu.Lock()
+	registration := c.registration
+	c.registration = nil
+	c.mu.Unlock()
 	if registration == nil {
 		return nil
 	}
+	c.markUnhealthy()
 	return registration.Deregister(ctx)
 }
 
-// Health checks registration validity through Renew.
+// Health checks whether this component has established a local registration.
 //
-// etcd registries refresh leases; memory registries update LastSeen.
+// Registry lease renewal and recovery run in the background so service
+// liveness does not depend on transient registry connectivity.
 func (c *RegistrationComponent) Health(ctx context.Context) error {
-	return c.renewOrRegister(ctx)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	c.mu.Lock()
+	registered := c.registration != nil
+	c.mu.Unlock()
+	if !registered {
+		return errors.New("service is not registered")
+	}
+	return nil
 }
 
 func (c *RegistrationComponent) renewLoop(ctx context.Context, done chan<- struct{}) {
@@ -143,18 +170,32 @@ func (c *RegistrationComponent) renewLoop(ctx context.Context, done chan<- struc
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := c.renewOrRegister(ctx); err != nil && c.logger != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			renewCtx, cancel := context.WithTimeout(context.Background(), registrationRenewTimeout)
+			err := c.renewOrRegister(renewCtx)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				c.markError("renew")
 				c.mu.Lock()
 				instance := c.instance
 				c.mu.Unlock()
-				fields := append(applogger.Fields(
-					applogger.Event("service_registration_renew_failed"),
-					applogger.Module(instance.Name),
-					applogger.String("address", instance.Address),
-					applogger.String("instance_id", instance.ID),
-				), applogger.ErrorFields(err)...)
-				c.logger.Warn(ctx, "service registration renew failed", fields...)
+				if c.logger != nil {
+					fields := append(applogger.Fields(
+						applogger.Event("service_registration_renew_failed"),
+						applogger.Module(instance.Name),
+						applogger.String("address", instance.Address),
+						applogger.String("instance_id", instance.ID),
+					), applogger.ErrorFields(err)...)
+					c.logger.Warn(ctx, "service registration renew failed", fields...)
+				}
+				continue
 			}
+			c.markRecovered("renew")
 		}
 	}
 }
@@ -187,6 +228,32 @@ func (c *RegistrationComponent) renewOrRegister(ctx context.Context) error {
 	c.mu.Lock()
 	c.registration = next
 	c.mu.Unlock()
+	c.healthy.Store(true)
+	c.metrics.SetStatus("registry", true)
+	c.metrics.RecordRecovery("registry", "re_register")
 	c.logRegistered(ctx, "service registration recovered")
 	return nil
+}
+
+func (c *RegistrationComponent) markHealthy() {
+	c.healthy.Store(true)
+	c.metrics.SetStatus("registry", true)
+}
+
+func (c *RegistrationComponent) markUnhealthy() {
+	c.healthy.Store(false)
+	c.metrics.SetStatus("registry", false)
+}
+
+func (c *RegistrationComponent) markError(operation string) {
+	c.healthy.Store(false)
+	c.metrics.SetStatus("registry", false)
+	c.metrics.RecordError("registry", operation)
+}
+
+func (c *RegistrationComponent) markRecovered(operation string) {
+	if !c.healthy.Swap(true) {
+		c.metrics.RecordRecovery("registry", operation)
+	}
+	c.metrics.SetStatus("registry", true)
 }

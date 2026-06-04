@@ -7,6 +7,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/opencode-sig/runtime-sdk/logger"
+	runtimemetrics "github.com/opencode-sig/runtime-sdk/observability/metrics"
 	runtimecomponent "github.com/opencode-sig/runtime-sdk/runtime/component"
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
@@ -99,16 +100,17 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 			return err
 		}
 	}
-	if err := addGRPCService(app, cfg); err != nil {
+	controlPlane := runtimemetrics.NewControlPlaneMetrics(cfg.Spec.Name)
+	if err := addGRPCService(app, cfg, controlPlane); err != nil {
 		return err
 	}
 	if cfg.Registry != nil {
-		if err := addServiceRegistration(app, cfg); err != nil {
+		if err := addServiceRegistration(app, cfg, controlPlane); err != nil {
 			return err
 		}
 	}
 	if cfg.Etcd != nil && strings.TrimSpace(cfg.Config.Metadata.RoutesPrefix) != "" {
-		if err := addGatewayMetadata(app, cfg); err != nil {
+		if err := addGatewayMetadata(app, cfg, controlPlane); err != nil {
 			return err
 		}
 	}

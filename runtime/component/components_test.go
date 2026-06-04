@@ -78,7 +78,7 @@ func TestRegistrationComponentRecordsDataPlaneInfo(t *testing.T) {
 	}
 }
 
-func TestRegistrationComponentHealthReRegistersAfterExpiredRegistration(t *testing.T) {
+func TestRegistrationComponentHealthChecksLocalRegistrationState(t *testing.T) {
 	reg := &fakeRegistry{
 		renewErrors: []error{registry.ErrRegistrationExpired},
 	}
@@ -91,49 +91,11 @@ func TestRegistrationComponentHealthReRegistersAfterExpiredRegistration(t *testi
 	})
 
 	if err := component.Health(context.Background()); err != nil {
-		t.Fatalf("health should recover registration: %v", err)
-	}
-	if got := reg.registerCalls(); got != 2 {
-		t.Fatalf("register calls = %d, want 2", got)
-	}
-	instances := reg.registeredInstances()
-	if got, want := instances[1].DataPlaneStartedAt, instances[0].DataPlaneStartedAt; !got.Equal(want) {
-		t.Fatalf("recovered data_plane_started_at = %s, want %s", got, want)
-	}
-}
-
-func TestRegistrationComponentHealthDoesNotReRegisterTransientRenewFailure(t *testing.T) {
-	renewErr := errors.New("etcd unavailable")
-	reg := &fakeRegistry{
-		renewErrors: []error{renewErr},
-	}
-	component := NewRegistrationComponent(reg, registry.NewServiceInstance("order", "127.0.0.1:2002", nil), nil)
-	if err := component.Start(context.Background()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = component.Stop(context.Background())
-	})
-
-	if err := component.Health(context.Background()); !errors.Is(err, renewErr) {
-		t.Fatalf("health error = %v, want %v", err, renewErr)
+		t.Fatalf("health: %v", err)
 	}
 	if got := reg.registerCalls(); got != 1 {
 		t.Fatalf("register calls = %d, want 1", got)
 	}
-}
-
-func TestRegistrationComponentConcurrentHealthReRegistersOnce(t *testing.T) {
-	reg := &fakeRegistry{
-		renewErrors: []error{registry.ErrRegistrationExpired},
-	}
-	component := NewRegistrationComponent(reg, registry.NewServiceInstance("order", "127.0.0.1:2002", nil), nil)
-	if err := component.Start(context.Background()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = component.Stop(context.Background())
-	})
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, 16)
@@ -148,11 +110,18 @@ func TestRegistrationComponentConcurrentHealthReRegistersOnce(t *testing.T) {
 	close(errCh)
 	for err := range errCh {
 		if err != nil {
-			t.Fatalf("health should recover registration: %v", err)
+			t.Fatalf("health: %v", err)
 		}
 	}
-	if got := reg.registerCalls(); got != 2 {
-		t.Fatalf("register calls = %d, want 2", got)
+	if got := reg.registerCalls(); got != 1 {
+		t.Fatalf("register calls = %d, want 1", got)
+	}
+}
+
+func TestRegistrationComponentHealthFailsWhenStopped(t *testing.T) {
+	component := NewRegistrationComponent(&fakeRegistry{}, registry.NewServiceInstance("order", "127.0.0.1:2002", nil), nil)
+	if err := component.Health(context.Background()); err == nil {
+		t.Fatal("expected unregistered health error")
 	}
 }
 
