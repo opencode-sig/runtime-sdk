@@ -44,14 +44,14 @@ func TestLoggerWithRuntimeIdentityFallsBackToListenAddress(t *testing.T) {
 	log := loggerWithRuntimeIdentity(base, Config{
 		Service: ServiceConfig{
 			Name:     "scheduler",
-			GRPCAddr: ":2104",
+			GRPCAddr: "127.0.0.1:2104",
 		},
 	}, Spec{Name: "scheduler"}, "monolith")
 
 	log.Info(context.Background(), "hello")
 
 	fields := logs.All()[0].ContextMap()
-	expectedInstanceID := registry.InstanceID("scheduler", ":2104")
+	expectedInstanceID := registry.InstanceID("scheduler", "127.0.0.1:2104")
 	if fields["instance_id"] != expectedInstanceID {
 		t.Fatalf("instance_id = %v, want %s", fields["instance_id"], expectedInstanceID)
 	}

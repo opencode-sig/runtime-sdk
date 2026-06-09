@@ -489,8 +489,13 @@ Address rules:
 - `advertise_http_addr` is the HTTP address published for Gateway HTTP backend
   proxying and management tools
 
-If the service runs inside containers or across machines, the advertised
-addresses should be reachable by other processes, not just by the local host.
+If an advertised address is empty and the corresponding listen address is a
+wildcard such as `:9003`, `0.0.0.0:9003`, or `[::]:9003`, `servicekit` resolves a
+usable runtime-local IP and publishes `IP:port`. This lets containerized
+services register their current container IP without hard-coding it. If the
+service runs across machines or networks with DNS-based routing, an explicit
+advertised address such as `payment:9003` or `10.0.1.8:9003` still takes
+priority and should be reachable by other processes.
 
 ## Config Loader
 

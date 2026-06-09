@@ -77,6 +77,10 @@ in a release note.
   Gateway implementations should resolve `backend.http.service` through
   registry and use instance metadata `advertise_http_addr` as the HTTP upstream
   address; the registry instance `address` field remains the gRPC address.
+- Managed service advertised addresses are resolved by `servicekit`: explicit
+  `advertise_grpc_addr` / `advertise_http_addr` values win; otherwise wildcard
+  listen addresses such as `:9004`, `0.0.0.0:9004`, and `[::]:9004` are
+  registered or published as a usable local runtime IP plus the listen port.
 - `servicekit.Spec.RegisterHTTP` is a standard-library `http.ServeMux` hook for
   service-owned HTTP handlers. It must not require Gin, application response
   envelopes, or Gateway-specific handler packages.

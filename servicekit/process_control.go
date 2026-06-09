@@ -3,7 +3,6 @@ package servicekit
 import (
 	"context"
 	"errors"
-	"strings"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
@@ -21,7 +20,7 @@ type ProcessControl struct {
 // NewProcessControl creates a control watcher when runtime config is sourced
 // from etcd. File-configured processes return nil.
 func NewProcessControl(ctx context.Context, cfg Config, watcherCfg ControlWatcherConfig, manager *Manager, logger *logger.Logger) (*ProcessControl, error) {
-	if !strings.EqualFold(strings.TrimSpace(cfg.Runtime.Config.Provider), "etcd") {
+	if !cfg.ProcessControlEnabled() {
 		return nil, nil
 	}
 	client, err := etcd.NewClientAndWait(ctx, etcd.Config{Endpoints: cfg.Runtime.Config.Etcd.Endpoints})

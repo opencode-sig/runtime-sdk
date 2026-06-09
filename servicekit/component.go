@@ -1,6 +1,7 @@
 package servicekit
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -34,14 +35,17 @@ func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *r
 
 func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics) error {
 	service := cfg.Config.Service
-	address := serviceAddress(cfg.Config)
-	if address == "" {
+	addresses, err := resolveServiceAddresses(context.Background(), cfg.Config)
+	if err != nil {
+		return err
+	}
+	if addresses.GRPC == "" {
 		return fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
 	}
-	instance := registry.NewServiceInstance(cfg.Spec.Name, address, map[string]string{
+	instance := registry.NewServiceInstance(cfg.Spec.Name, addresses.GRPC, map[string]string{
 		"runtime":             strings.TrimSpace(cfg.RuntimeMode),
 		"http_addr":           service.HTTPAddr,
-		"advertise_http_addr": service.AdvertiseHTTPAddr,
+		"advertise_http_addr": addresses.HTTP,
 	})
 	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewRegistrationComponent(cfg.Registry, instance, cfg.Logger).
 		WithDataPlaneGeneration(cfg.DataPlaneGeneration).

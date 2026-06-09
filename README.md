@@ -129,6 +129,13 @@ prefixes. HTTP backend routes use `gatewaymeta.HTTPProxy`; Gateways should
 resolve `RouteMeta.Backend.HTTP.Service` through registry and proxy to the
 selected instance's `advertise_http_addr` metadata.
 
+Managed services register the advertised gRPC address in
+`ServiceInstance.Address`. If `advertise_grpc_addr` is empty and `grpc_addr`
+listens on `:port`, `0.0.0.0:port`, or `[::]:port`, `servicekit` resolves a
+usable local runtime IP and registers `IP:port`. The same rule fills
+`advertise_http_addr` metadata from wildcard `http_addr` values, while explicit
+`advertise_*` addresses always win.
+
 Services that own HTTP backend routes can register their upstream handlers with
 `servicekit.Spec.RegisterHTTP` or `GRPCSpec.RegisterHTTP`. The handlers run on
 the service HTTP listener next to runtime endpoints such as `/healthz`,

@@ -1,6 +1,7 @@
 package servicekit
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -12,7 +13,10 @@ func ServiceIdentity(cfg Config) (string, string, error) {
 	if name == "" {
 		return "", "", fmt.Errorf("service name is required")
 	}
-	address := serviceAddress(cfg)
+	address, err := resolveServiceAddress(context.Background(), cfg)
+	if err != nil {
+		return "", "", err
+	}
 	if address == "" {
 		return "", "", fmt.Errorf("service %s advertise grpc addr is required", name)
 	}

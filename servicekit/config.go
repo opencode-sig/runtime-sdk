@@ -87,6 +87,12 @@ func (c Config) RegistryEnabled() bool {
 	return strings.EqualFold(strings.TrimSpace(c.Registry.Provider), "etcd")
 }
 
+// ProcessControlEnabled reports whether the process should watch control
+// commands from the runtime config center.
+func (c Config) ProcessControlEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(c.Runtime.Config.Provider), "etcd")
+}
+
 // EtcdConfigStore creates an etcd config-center store when etcd config is present.
 func (c Config) EtcdConfigStore() (*runtimeconfig.EtcdProvider, bool) {
 	if !strings.EqualFold(strings.TrimSpace(c.Runtime.Config.Provider), "etcd") && !hasEtcdConfig(c.Runtime.Config.Etcd) {

@@ -431,6 +431,20 @@ settings:
   payment_provider: sandbox
 ```
 
+地址规则：
+
+- `grpc_addr` 是本进程 gRPC 监听地址。
+- `advertise_grpc_addr` 是注册给其他服务和 Gateway discovery 使用的地址。
+- `http_addr` 是服务 HTTP listener 地址，用于 `/healthz`、`/readyz`、`/metrics`
+  和可选 pprof。
+- `advertise_http_addr` 是 Gateway HTTP backend proxy 使用的 HTTP upstream 地址。
+
+如果 advertised 地址为空，并且对应监听地址是 `:9004`、`0.0.0.0:9004` 或
+`[::]:9004` 这类 wildcard 地址，`servicekit` 会解析可用的运行时本机 IP，并发布
+`IP:port`。这让容器化服务可以注册当前容器 IP，而不需要把 IP 写死。跨机器或使用
+DNS 路由时，仍然可以显式配置 `payment:9004` 或 `10.0.1.8:9004` 这类可达地址，
+显式配置始终优先。
+
 使用 etcd 配置中心时，在 `configs/runtime.yaml` 中切换 provider：
 
 ```yaml

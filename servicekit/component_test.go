@@ -49,6 +49,36 @@ func TestAddServiceRegistrationPublishesHTTPMetadata(t *testing.T) {
 	}
 }
 
+func TestAddServiceRegistrationFallsBackToConcreteHTTPListenAddress(t *testing.T) {
+	reg := &captureRegistry{}
+	app := lifecycle.New("payment")
+
+	if err := addServiceRegistration(app, ComponentConfig{
+		Config: Config{
+			Service: ServiceConfig{
+				GRPCAddr:          ":9001",
+				AdvertiseGRPCAddr: "127.0.0.1:9001",
+				HTTPAddr:          "127.0.0.1:9101",
+			},
+		},
+		Spec:        Spec{Name: "payment"},
+		Registry:    reg,
+		RuntimeMode: "distributed",
+	}, runtimemetrics.NewControlPlaneMetrics("payment")); err != nil {
+		t.Fatalf("add registration: %v", err)
+	}
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = app.Stop(context.Background())
+	})
+
+	if reg.instance.Metadata["advertise_http_addr"] != "127.0.0.1:9101" {
+		t.Fatalf("advertise_http_addr metadata = %q", reg.instance.Metadata["advertise_http_addr"])
+	}
+}
+
 type captureRegistry struct {
 	instance registry.ServiceInstance
 }

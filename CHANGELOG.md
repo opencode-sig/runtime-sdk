@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.4 - 2026-06-09
+
+- Added automatic advertised address resolution for managed services. When
+  `advertise_grpc_addr` is empty and `grpc_addr` listens on `:port`,
+  `0.0.0.0:port`, or `[::]:port`, servicekit now registers a usable local
+  runtime IP plus the gRPC port instead of the wildcard listen address. The same
+  rule now fills registry metadata `advertise_http_addr` from `http_addr` for
+  Gateway HTTP backend proxy routes.
+
 ## v0.7.3 - 2026-06-04
 
 - Changed Gateway metadata reconcile to skip etcd `Put` calls when descriptor or

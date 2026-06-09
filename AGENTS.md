@@ -607,9 +607,9 @@ metadata:
 - `configs/registry.yaml`：服务注册中心配置；`provider=etcd` 时 endpoints 和 prefix 必填。
 - `configs/infra/*.yaml`：可选 infra 配置，由 `servicekit.Infra` 按需创建。
 - `service.grpc_addr`：本进程监听地址，必填。
-- `service.advertise_grpc_addr`：注册中心和控制命令 instance id 使用的地址；为空时回退到 `grpc_addr`。
+- `service.advertise_grpc_addr`：注册中心和控制命令 instance id 使用的地址；显式配置时优先使用。为空且 `grpc_addr` 是 `:9004`、`0.0.0.0:9004` 或 `[::]:9004` 这类 wildcard 监听地址时，SDK 会解析可用的运行时本机 IP 并注册 `IP:port`；否则回退到 `grpc_addr`。
 - `service.http_addr`：服务 HTTP listener 地址；为空则不启动 HTTP listener。
-- `service.advertise_http_addr`：Gateway HTTP backend proxy 使用的 advertised HTTP upstream 地址。
+- `service.advertise_http_addr`：Gateway HTTP backend proxy 使用的 advertised HTTP upstream 地址；显式配置时优先使用。为空且 `http_addr` 是 wildcard 监听地址时，SDK 会复用同一套运行时本机 IP 解析规则，并把 `IP:port` 写入 registry metadata 的 `advertise_http_addr`。
 - `service.enable_pprof`：是否在服务 HTTP listener 上挂载 pprof。
 - `settings`：业务私有配置，SDK 不解释，业务用 `DecodeSettings[T]` 解码。
 

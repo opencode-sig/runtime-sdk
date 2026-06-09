@@ -57,6 +57,10 @@
   `backend.http.service` 解析 registry 实例，并使用实例 metadata 中的
   `advertise_http_addr` 作为 HTTP upstream 地址；registry instance 的
   `address` 字段仍然表示 gRPC 地址。
+- 受管理服务的 advertised 地址由 `servicekit` 解析：显式配置
+  `advertise_grpc_addr` / `advertise_http_addr` 时优先使用；否则当监听地址是
+  `:9004`、`0.0.0.0:9004` 或 `[::]:9004` 这类 wildcard 地址时，会解析可用的
+  运行时本机 IP，并用 `IP:port` 注册或发布 metadata。
 - `servicekit.Spec.RegisterHTTP` 是基于标准库 `http.ServeMux` 的业务 HTTP
   handler 注册 hook。它不应要求 Gin、应用 response envelope 或 Gateway
   专用 handler 包。

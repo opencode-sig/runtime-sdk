@@ -64,10 +64,13 @@ func Run(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 
-	watcherCfg, err := ControlConfigForService(initial)
-	if err != nil {
-		_ = manager.Stop(ctx)
-		return err
+	var watcherCfg ControlWatcherConfig
+	if initial.ProcessControlEnabled() {
+		watcherCfg, err = ControlConfigForService(initial)
+		if err != nil {
+			_ = manager.Stop(ctx)
+			return err
+		}
 	}
 	control, err := NewProcessControl(ctx, initial, watcherCfg, manager, log)
 	if err != nil {

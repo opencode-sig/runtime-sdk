@@ -33,6 +33,26 @@ func TestEtcdConfigStore(t *testing.T) {
 	}
 }
 
+func TestProcessControlEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{name: "provider etcd", cfg: Config{Runtime: RuntimeConfig{Config: ConfigSourceConfig{Provider: "etcd"}}}, want: true},
+		{name: "provider file with etcd endpoints", cfg: Config{Runtime: RuntimeConfig{Config: ConfigSourceConfig{Provider: "file", Etcd: EtcdConfig{Endpoints: []string{"127.0.0.1:2379"}}}}}, want: false},
+		{name: "provider empty", cfg: Config{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.ProcessControlEnabled(); got != tt.want {
+				t.Fatalf("ProcessControlEnabled = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestControlConfigCommandTTLDuration(t *testing.T) {
 	duration, err := (ControlConfig{CommandTTL: "30m"}).CommandTTLDuration()
 	if err != nil {

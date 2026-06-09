@@ -1,6 +1,7 @@
 package servicekit
 
 import (
+	"context"
 	"strings"
 
 	"github.com/opencode-sig/runtime-sdk/logger"
@@ -29,9 +30,12 @@ func loggerWithRuntimeIdentity(base *logger.Logger, cfg Config, spec Spec, runti
 }
 
 func serviceAddress(cfg Config) string {
-	address := strings.TrimSpace(cfg.Service.AdvertiseGRPCAddr)
-	if address == "" {
-		address = strings.TrimSpace(cfg.Service.GRPCAddr)
+	address, err := resolveServiceAddress(context.Background(), cfg)
+	if err == nil {
+		return address
 	}
-	return address
+	if address := strings.TrimSpace(cfg.Service.AdvertiseGRPCAddr); address != "" {
+		return address
+	}
+	return strings.TrimSpace(cfg.Service.GRPCAddr)
 }
