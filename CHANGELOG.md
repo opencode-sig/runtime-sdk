@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.5 - 2026-06-10
 
 - Added `gatewaymeta.WSProxy` for declarative WebSocket backend proxy routes.
 - Added `gatewaymeta.GatewayRouteSpec.SSE()` so HTTP backend proxy routes can
