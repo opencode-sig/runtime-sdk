@@ -72,6 +72,24 @@ func HTTPProxy(id string, method string, path string, service string) GatewayRou
 	}
 }
 
+// WSProxy creates a WebSocket reverse proxy route declaration.
+//
+// WebSocket proxy routes keep Gateway in a pure proxy role while making the
+// upgraded protocol explicit in route metadata and validation.
+func WSProxy(id string, path string, service string) GatewayRouteSpec {
+	return GatewayRouteSpec{
+		ID:         strings.TrimSpace(id),
+		HTTPMethod: http.MethodGet,
+		HTTPPath:   path,
+		Backend: &BackendMeta{
+			Type: BackendTypeWebSocket,
+			WebSocket: &WebSocketBackendMeta{
+				Service: strings.TrimSpace(service),
+			},
+		},
+	}
+}
+
 // UpstreamPath sets the HTTP backend path.
 //
 // Empty means the Gateway should use the matched public route path.
@@ -83,6 +101,35 @@ func (r GatewayRouteSpec) UpstreamPath(path string) GatewayRouteSpec {
 		r.Backend.HTTP = &HTTPBackendMeta{}
 	}
 	r.Backend.HTTP.Path = normalizeHTTPBackendPath(path)
+	return r
+}
+
+// SSE marks this HTTP backend route as an explicit Server-Sent Events stream.
+//
+// SSE stays within the HTTP backend contract instead of introducing a separate
+// transport type. The route must still satisfy HTTP backend validation rules.
+func (r GatewayRouteSpec) SSE() GatewayRouteSpec {
+	if r.Backend == nil {
+		r.Backend = &BackendMeta{Type: BackendTypeHTTP}
+	}
+	if r.Backend.HTTP == nil {
+		r.Backend.HTTP = &HTTPBackendMeta{}
+	}
+	r.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: HTTPStreamModeSSE}
+	return r
+}
+
+// UpstreamWSPath sets the WebSocket backend path.
+//
+// Empty means the Gateway should use the matched public route path.
+func (r GatewayRouteSpec) UpstreamWSPath(path string) GatewayRouteSpec {
+	if r.Backend == nil {
+		r.Backend = &BackendMeta{Type: BackendTypeWebSocket}
+	}
+	if r.Backend.WebSocket == nil {
+		r.Backend.WebSocket = &WebSocketBackendMeta{}
+	}
+	r.Backend.WebSocket.Path = normalizeHTTPBackendPath(path)
 	return r
 }
 
@@ -198,7 +245,7 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 
 	needsDescriptor := false
 	for _, routeSpec := range spec.Routes {
-		if !routeSpec.isHTTPBackend() {
+		if !routeSpec.isHTTPBackend() && !routeSpec.isWebSocketBackend() {
 			needsDescriptor = true
 			break
 		}
@@ -224,6 +271,14 @@ func NewGatewayPublication(spec GatewayPublicationSpec) ([]RouteMeta, map[string
 	for _, routeSpec := range spec.Routes {
 		if routeSpec.isHTTPBackend() {
 			route, err := newHTTPBackendRoute(routeSpec)
+			if err != nil {
+				return nil, nil, err
+			}
+			routes = append(routes, route)
+			continue
+		}
+		if routeSpec.isWebSocketBackend() {
+			route, err := newWebSocketBackendRoute(routeSpec)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -305,6 +360,10 @@ func (r GatewayRouteSpec) isHTTPBackend() bool {
 	return r.Backend != nil && r.Backend.Type == BackendTypeHTTP
 }
 
+func (r GatewayRouteSpec) isWebSocketBackend() bool {
+	return r.Backend != nil && r.Backend.Type == BackendTypeWebSocket
+}
+
 func newHTTPBackendRoute(spec GatewayRouteSpec) (RouteMeta, error) {
 	route := RouteMeta{
 		ID:      strings.TrimSpace(spec.ID),
@@ -321,6 +380,29 @@ func newHTTPBackendRoute(spec GatewayRouteSpec) (RouteMeta, error) {
 	}
 	if route.Backend != nil && route.Backend.HTTP != nil {
 		route.Backend.HTTP.Path = normalizeHTTPBackendPath(route.Backend.HTTP.Path)
+	}
+	if err := route.Validate(); err != nil {
+		return RouteMeta{}, err
+	}
+	return route, nil
+}
+
+func newWebSocketBackendRoute(spec GatewayRouteSpec) (RouteMeta, error) {
+	route := RouteMeta{
+		ID:      strings.TrimSpace(spec.ID),
+		Enabled: !spec.Disabled,
+		HTTP: HTTPMeta{
+			Method: spec.HTTPMethod,
+			Path:   gatewayRoutePath(spec.HTTPPath),
+		},
+		Binding:  spec.Binding,
+		Backend:  cloneBackendMeta(spec.Backend),
+		Timeout:  spec.TimeoutString,
+		Auth:     cloneAuthPolicy(spec.Auth),
+		Response: cloneResponsePolicy(spec.Response),
+	}
+	if route.Backend != nil && route.Backend.WebSocket != nil {
+		route.Backend.WebSocket.Path = normalizeHTTPBackendPath(route.Backend.WebSocket.Path)
 	}
 	if err := route.Validate(); err != nil {
 		return RouteMeta{}, err

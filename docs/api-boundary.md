@@ -74,6 +74,9 @@ in a release note.
   rules or forcing themselves through managed gRPC service templates.
 - HTTP backend Gateway routes are declarative route metadata. Services or
   platform components should declare them through `runtime/gatewaymeta.HTTPProxy`.
+  HTTP backend routes may also publish explicit SSE stream metadata through
+  `GatewayRouteSpec.SSE()`. WebSocket backend routes should use
+  `runtime/gatewaymeta.WSProxy`.
   Gateway implementations should resolve `backend.http.service` through
   registry and use instance metadata `advertise_http_addr` as the HTTP upstream
   address; the registry instance `address` field remains the gRPC address.

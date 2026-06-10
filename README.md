@@ -127,7 +127,10 @@ service-name prefix. gRPC backend routes should forward by the published
 `RouteMeta.GRPC.Service` and `RouteMeta.GRPC.FullMethod`, not by parsing URL
 prefixes. HTTP backend routes use `gatewaymeta.HTTPProxy`; Gateways should
 resolve `RouteMeta.Backend.HTTP.Service` through registry and proxy to the
-selected instance's `advertise_http_addr` metadata.
+selected instance's `advertise_http_addr` metadata. HTTP backend routes may
+also mark an explicit SSE stream with `.SSE()`. WebSocket backend routes use
+`gatewaymeta.WSProxy` and remain declarative proxy metadata instead of gRPC
+descriptors.
 
 Managed services register the advertised gRPC address in
 `ServiceInstance.Address`. If `advertise_grpc_addr` is empty and `grpc_addr`

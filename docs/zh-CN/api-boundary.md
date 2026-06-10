@@ -53,7 +53,9 @@
   lifecycle 组装逻辑；不要复制 generation 规则，也不要为了复用规则而强行套入
   普通 gRPC 服务模板。
 - HTTP backend Gateway 路由属于声明式 route metadata。服务或平台组件应通过
-  `runtime/gatewaymeta.HTTPProxy` 声明。Gateway 实现应根据
+  `runtime/gatewaymeta.HTTPProxy` 声明；需要显式 SSE 流元数据时可调用
+  `GatewayRouteSpec.SSE()`；WebSocket backend 路由应使用
+  `runtime/gatewaymeta.WSProxy`。Gateway 实现应根据
   `backend.http.service` 解析 registry 实例，并使用实例 metadata 中的
   `advertise_http_addr` 作为 HTTP upstream 地址；registry instance 的
   `address` 字段仍然表示 gRPC 地址。

@@ -3,6 +3,7 @@ package gatewaymeta
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -37,17 +38,31 @@ type GRPCMeta struct {
 type BackendType string
 
 const (
-	BackendTypeGRPC BackendType = "grpc"
-	BackendTypeHTTP BackendType = "http"
+	BackendTypeGRPC      BackendType = "grpc"
+	BackendTypeHTTP      BackendType = "http"
+	BackendTypeWebSocket BackendType = "websocket"
 )
 
 type BackendMeta struct {
-	Type BackendType      `json:"type,omitempty"`
-	GRPC *GRPCMeta        `json:"grpc,omitempty"`
-	HTTP *HTTPBackendMeta `json:"http,omitempty"`
+	Type      BackendType           `json:"type,omitempty"`
+	GRPC      *GRPCMeta             `json:"grpc,omitempty"`
+	HTTP      *HTTPBackendMeta      `json:"http,omitempty"`
+	WebSocket *WebSocketBackendMeta `json:"websocket,omitempty"`
 }
 
+const HTTPStreamModeSSE = "sse"
+
 type HTTPBackendMeta struct {
+	Service string          `json:"service,omitempty"`
+	Path    string          `json:"path,omitempty"`
+	Stream  *HTTPStreamMeta `json:"stream,omitempty"`
+}
+
+type HTTPStreamMeta struct {
+	Mode string `json:"mode,omitempty"`
+}
+
+type WebSocketBackendMeta struct {
 	Service string `json:"service,omitempty"`
 	Path    string `json:"path,omitempty"`
 }
@@ -104,12 +119,20 @@ func cloneBackendMeta(backend *BackendMeta) *BackendMeta {
 	}
 	if backend.HTTP != nil {
 		httpBackend := *backend.HTTP
+		if backend.HTTP.Stream != nil {
+			stream := *backend.HTTP.Stream
+			httpBackend.Stream = &stream
+		}
 		clone.HTTP = &httpBackend
+	}
+	if backend.WebSocket != nil {
+		websocketBackend := *backend.WebSocket
+		clone.WebSocket = &websocketBackend
 	}
 	return &clone
 }
 
-// MarshalJSON omits the legacy top-level grpc field for HTTP backend routes.
+// MarshalJSON omits the legacy top-level grpc field for non-gRPC backend routes.
 func (r RouteMeta) MarshalJSON() ([]byte, error) {
 	type routeMeta RouteMeta
 	out := struct {
@@ -119,7 +142,7 @@ func (r RouteMeta) MarshalJSON() ([]byte, error) {
 		routeMeta: routeMeta(r),
 	}
 	out.routeMeta.GRPC = GRPCMeta{}
-	if r.BackendType() != BackendTypeHTTP {
+	if r.BackendType() == BackendTypeGRPC {
 		grpc := r.GRPC
 		out.GRPC = &grpc
 	}
@@ -168,6 +191,10 @@ func (r RouteMeta) Validate() error {
 		if err := r.validateHTTPBackend(); err != nil {
 			return err
 		}
+	case BackendTypeWebSocket:
+		if err := r.validateWebSocketBackend(); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("route %s backend type %q is not supported", r.ID, r.Backend.Type)
 	}
@@ -214,11 +241,51 @@ func (r RouteMeta) validateHTTPBackend() error {
 			return err
 		}
 	}
+	streamMode := normalizeHTTPStreamMode("")
+	if r.Backend.HTTP.Stream != nil {
+		streamMode = normalizeHTTPStreamMode(r.Backend.HTTP.Stream.Mode)
+		if streamMode == "" {
+			return fmt.Errorf("route %s http backend stream mode is required", r.ID)
+		}
+		if streamMode != HTTPStreamModeSSE {
+			return fmt.Errorf("route %s http backend stream mode %q is not supported", r.ID, r.Backend.HTTP.Stream.Mode)
+		}
+	}
+	if streamMode == HTTPStreamModeSSE && r.HTTP.NormalizedMethod() != http.MethodGet {
+		return fmt.Errorf("route %s sse http backend method must be GET", r.ID)
+	}
 	if len(r.Binding.Path) > 0 || len(r.Binding.Query) > 0 || strings.TrimSpace(r.Binding.Body) != "" {
 		return fmt.Errorf("route %s http backend must not set protobuf binding", r.ID)
 	}
 	if r.Response != nil && r.Response.Raw != nil {
 		return fmt.Errorf("route %s http backend must not set raw response policy", r.ID)
+	}
+	return nil
+}
+
+func (r RouteMeta) validateWebSocketBackend() error {
+	if r.Backend == nil || r.Backend.WebSocket == nil {
+		return fmt.Errorf("route %s websocket backend is required", r.ID)
+	}
+	if !isZeroGRPCMeta(r.GRPC) || r.Backend.GRPC != nil {
+		return fmt.Errorf("route %s websocket backend must not set grpc metadata", r.ID)
+	}
+	if r.HTTP.NormalizedMethod() != http.MethodGet {
+		return fmt.Errorf("route %s websocket backend http method must be GET", r.ID)
+	}
+	if strings.TrimSpace(r.Backend.WebSocket.Service) == "" {
+		return fmt.Errorf("route %s websocket backend service is required", r.ID)
+	}
+	if strings.TrimSpace(r.Backend.WebSocket.Path) != "" {
+		if err := validateHTTPBackendPath(r.ID, r.Backend.WebSocket.Path); err != nil {
+			return err
+		}
+	}
+	if len(r.Binding.Path) > 0 || len(r.Binding.Query) > 0 || strings.TrimSpace(r.Binding.Body) != "" {
+		return fmt.Errorf("route %s websocket backend must not set protobuf binding", r.ID)
+	}
+	if r.Response != nil && r.Response.Raw != nil {
+		return fmt.Errorf("route %s websocket backend must not set raw response policy", r.ID)
 	}
 	return nil
 }
@@ -243,6 +310,10 @@ func validateHTTPBackendPath(routeID string, path string) error {
 		return fmt.Errorf("route %s http backend path must not contain empty segments", routeID)
 	}
 	return nil
+}
+
+func normalizeHTTPStreamMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
 }
 
 // TimeoutDuration returns the upstream call timeout for this route.

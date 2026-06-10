@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added `gatewaymeta.WSProxy` for declarative WebSocket backend proxy routes.
+- Added `gatewaymeta.GatewayRouteSpec.SSE()` so HTTP backend proxy routes can
+  explicitly publish Server-Sent Events stream metadata and validation rules.
+
 ## v0.7.4 - 2026-06-09
 
 - Added automatic advertised address resolution for managed services. When

@@ -2,6 +2,7 @@ package gatewaymeta
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 )
 
@@ -145,6 +146,74 @@ func TestNewGatewayPublicationHTTPProxy(t *testing.T) {
 	}
 }
 
+func TestNewGatewayPublicationHTTPSSEProxy(t *testing.T) {
+	routes, descriptors, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			HTTPProxy("legacy.events_sse", "GET", "/v1/legacy/events/stream", "legacy-api").
+				UpstreamPath("/events/stream").
+				SSE().
+				Timeout("5s"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if len(descriptors) != 0 {
+		t.Fatalf("descriptors = %v, want empty", descriptors)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("routes length = %d", len(routes))
+	}
+	route := routes[0]
+	if route.Backend == nil || route.Backend.Type != BackendTypeHTTP || route.Backend.HTTP == nil {
+		t.Fatalf("backend = %#v, want http backend", route.Backend)
+	}
+	if route.Backend.HTTP.Stream == nil || route.Backend.HTTP.Stream.Mode != HTTPStreamModeSSE {
+		t.Fatalf("http stream = %#v", route.Backend.HTTP.Stream)
+	}
+}
+
+func TestNewGatewayPublicationWSProxy(t *testing.T) {
+	routes, descriptors, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api").
+				UpstreamWSPath("/events/stream").
+				Timeout("3s"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if len(descriptors) != 0 {
+		t.Fatalf("descriptors = %v, want empty", descriptors)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("routes length = %d", len(routes))
+	}
+	route := routes[0]
+	if route.Backend == nil || route.Backend.Type != BackendTypeWebSocket || route.Backend.WebSocket == nil {
+		t.Fatalf("backend = %#v, want websocket backend", route.Backend)
+	}
+	if route.Backend.WebSocket.Service != "legacy-api" {
+		t.Fatalf("backend service = %q", route.Backend.WebSocket.Service)
+	}
+	if route.Backend.WebSocket.Path != "/events/stream" {
+		t.Fatalf("backend path = %q", route.Backend.WebSocket.Path)
+	}
+	if route.HTTP.Method != http.MethodGet {
+		t.Fatalf("http method = %q, want GET", route.HTTP.Method)
+	}
+	data, err := json.Marshal(route)
+	if err != nil {
+		t.Fatalf("marshal route: %v", err)
+	}
+	if containsJSONField(data, "grpc") {
+		t.Fatalf("websocket proxy route should omit grpc field: %s", string(data))
+	}
+}
+
 func TestNewGatewayPublicationHTTPProxyAnyMethod(t *testing.T) {
 	routes, _, err := NewGatewayPublication(GatewayPublicationSpec{
 		Service: "legacy",
@@ -200,6 +269,38 @@ func TestNewGatewayPublicationMixedGRPCAndHTTPProxy(t *testing.T) {
 	}
 }
 
+func TestNewGatewayPublicationMixedGRPCHTTPAndWSProxy(t *testing.T) {
+	routes, descriptors, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "user",
+		File:    testUserFile(t),
+		Routes: []GatewayRouteSpec{
+			GET("GetUser", "/v1/users/{id}").Path("id", "id"),
+			HTTPProxy("user.legacy_profile", "GET", "/v1/users/{id}/legacy-profile", "legacy-user").
+				UpstreamPath("/users/profile"),
+			WSProxy("user.events_stream", "/v1/users/events/stream", "legacy-user").
+				UpstreamWSPath("/events/stream"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("gateway publication: %v", err)
+	}
+	if len(routes) != 3 {
+		t.Fatalf("routes length = %d", len(routes))
+	}
+	if len(descriptors["api.user.v1"]) == 0 {
+		t.Fatal("descriptor set is empty")
+	}
+	if routes[0].Backend.Type != BackendTypeGRPC {
+		t.Fatalf("first backend = %q, want grpc", routes[0].Backend.Type)
+	}
+	if routes[1].Backend.Type != BackendTypeHTTP {
+		t.Fatalf("second backend = %q, want http", routes[1].Backend.Type)
+	}
+	if routes[2].Backend.Type != BackendTypeWebSocket {
+		t.Fatalf("third backend = %q, want websocket", routes[2].Backend.Type)
+	}
+}
+
 func TestNewGatewayPublicationHTTPProxyRejectsInvalidSpec(t *testing.T) {
 	tests := []struct {
 		name string
@@ -220,6 +321,10 @@ func TestNewGatewayPublicationHTTPProxyRejectsInvalidSpec(t *testing.T) {
 		{
 			name: "raw response",
 			spec: HTTPProxy("legacy.orders_search", "POST", "/v1/legacy/orders/search", "legacy-api").RawResponse("text/plain"),
+		},
+		{
+			name: "sse non get",
+			spec: HTTPProxy("legacy.events_sse", "POST", "/v1/legacy/events/stream", "legacy-api").SSE(),
 		},
 		{
 			name: "url upstream path",
@@ -243,6 +348,57 @@ func TestNewGatewayPublicationHTTPProxyRejectsInvalidSpec(t *testing.T) {
 	}
 }
 
+func TestNewGatewayPublicationWSProxyRejectsInvalidSpec(t *testing.T) {
+	tests := []struct {
+		name string
+		spec GatewayRouteSpec
+	}{
+		{
+			name: "missing id",
+			spec: WSProxy("", "/v1/legacy/events/stream", "legacy-api"),
+		},
+		{
+			name: "missing service",
+			spec: WSProxy("legacy.events_stream", "/v1/legacy/events/stream", ""),
+		},
+		{
+			name: "binding",
+			spec: WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api").Body("*"),
+		},
+		{
+			name: "raw response",
+			spec: WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api").RawResponse("text/plain"),
+		},
+		{
+			name: "invalid method",
+			spec: func() GatewayRouteSpec {
+				route := WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api")
+				route.HTTPMethod = http.MethodPost
+				return route
+			}(),
+		},
+		{
+			name: "url upstream path",
+			spec: WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api").UpstreamWSPath("http://legacy/events"),
+		},
+		{
+			name: "query upstream path",
+			spec: WSProxy("legacy.events_stream", "/v1/legacy/events/stream", "legacy-api").UpstreamWSPath("/events?debug=1"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := NewGatewayPublication(GatewayPublicationSpec{
+				Service: "legacy",
+				Routes:  []GatewayRouteSpec{tt.spec},
+			})
+			if err == nil {
+				t.Fatal("expected gateway publication error")
+			}
+		})
+	}
+}
+
 func TestNewGatewayPublicationRejectsDuplicateHTTPRoute(t *testing.T) {
 	_, _, err := NewGatewayPublication(GatewayPublicationSpec{
 		Service: "user",
@@ -250,6 +406,19 @@ func TestNewGatewayPublicationRejectsDuplicateHTTPRoute(t *testing.T) {
 		Routes: []GatewayRouteSpec{
 			GET("GetUser", "/v1/users/{id}"),
 			HTTPProxy("user.legacy_get", "GET", "/v1/users/{id}", "legacy-user"),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate route error")
+	}
+}
+
+func TestNewGatewayPublicationWSProxyConflictsWithHTTPGetRoute(t *testing.T) {
+	_, _, err := NewGatewayPublication(GatewayPublicationSpec{
+		Service: "legacy",
+		Routes: []GatewayRouteSpec{
+			HTTPProxy("legacy.http_get", "GET", "/v1/legacy/events/stream", "legacy-api"),
+			WSProxy("legacy.ws_get", "/v1/legacy/events/stream", "legacy-api"),
 		},
 	})
 	if err == nil {

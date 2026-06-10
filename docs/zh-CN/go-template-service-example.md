@@ -273,6 +273,30 @@ gatewaymeta.HTTPProxy("payment.http_report", "GET", "/v1/payments/http/report", 
 路径。Gateway 实现应根据 `backend.http.service` 解析 registry 实例，并代理到
 实例 metadata 中的 `advertise_http_addr`。
 
+如果 HTTP backend 是显式的 Server-Sent Events 流，应直接在 route metadata
+里声明：
+
+```go
+gatewaymeta.HTTPProxy("payment.events_sse", "GET", "/v1/payments/events", ServiceName).
+	UpstreamPath("/internal/payments/events").
+	SSE().
+	Timeout("30s")
+```
+
+`SSE()` 只适用于 HTTP backend 路由，当前要求 `GET`，并且仍然不使用 protobuf
+binding 或 raw response metadata。
+
+如果 upstream 是 WebSocket 服务，应发布显式的 WebSocket proxy 路由：
+
+```go
+gatewaymeta.WSProxy("payment.events_ws", "/v1/payments/ws", ServiceName).
+	UpstreamWSPath("/internal/payments/ws").
+	Timeout("30s")
+```
+
+WebSocket proxy 路由保持纯声明式：不需要 protobuf descriptor，不使用 protobuf
+binding，也不使用 raw response policy。
+
 服务用标准库 `net/http` 注册 upstream handler：
 
 ```go

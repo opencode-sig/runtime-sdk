@@ -42,6 +42,22 @@ func TestRouteMetaValidateHTTPBackend(t *testing.T) {
 	}
 }
 
+func TestRouteMetaValidateHTTPBackendSSE(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.HTTP.Method = http.MethodGet
+	route.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: HTTPStreamModeSSE}
+	if err := route.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
+func TestRouteMetaValidateWebSocketBackend(t *testing.T) {
+	route := testWebSocketBackendRoute()
+	if err := route.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
 func TestRouteMetaValidateRejectsHTTPBackendBinding(t *testing.T) {
 	route := testHTTPBackendRoute()
 	route.Binding.Body = "*"
@@ -58,8 +74,77 @@ func TestRouteMetaValidateRejectsHTTPBackendRawResponse(t *testing.T) {
 	}
 }
 
+func TestRouteMetaValidateRejectsHTTPBackendSSEBinding(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.HTTP.Method = http.MethodGet
+	route.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: HTTPStreamModeSSE}
+	route.Binding.Body = "*"
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendSSERawResponse(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.HTTP.Method = http.MethodGet
+	route.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: HTTPStreamModeSSE}
+	route.Response = &ResponsePolicy{Raw: defaultRawResponsePolicy("text/plain")}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendSSENonGET(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: HTTPStreamModeSSE}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsHTTPBackendInvalidStreamMode(t *testing.T) {
+	route := testHTTPBackendRoute()
+	route.HTTP.Method = http.MethodGet
+	route.Backend.HTTP.Stream = &HTTPStreamMeta{Mode: "streaming"}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
 func TestRouteMetaValidateRejectsHTTPBackendGRPCMetadata(t *testing.T) {
 	route := testHTTPBackendRoute()
+	route.GRPC = GRPCMeta{Service: "legacy"}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsWebSocketBackendBinding(t *testing.T) {
+	route := testWebSocketBackendRoute()
+	route.Binding.Body = "*"
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsWebSocketBackendRawResponse(t *testing.T) {
+	route := testWebSocketBackendRoute()
+	route.Response = &ResponsePolicy{Raw: defaultRawResponsePolicy("text/plain")}
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsWebSocketBackendNonGET(t *testing.T) {
+	route := testWebSocketBackendRoute()
+	route.HTTP.Method = http.MethodPost
+	if err := route.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRouteMetaValidateRejectsWebSocketBackendGRPCMetadata(t *testing.T) {
+	route := testWebSocketBackendRoute()
 	route.GRPC = GRPCMeta{Service: "legacy"}
 	if err := route.Validate(); err == nil {
 		t.Fatal("expected validation error")
@@ -120,6 +205,25 @@ func testHTTPBackendRoute() RouteMeta {
 			HTTP: &HTTPBackendMeta{
 				Service: "legacy-api",
 				Path:    "/orders/search",
+			},
+		},
+		Timeout: "3s",
+	}
+}
+
+func testWebSocketBackendRoute() RouteMeta {
+	return RouteMeta{
+		ID:      "legacy.events_stream",
+		Enabled: true,
+		HTTP: HTTPMeta{
+			Method: http.MethodGet,
+			Path:   "/v1/legacy/events/stream",
+		},
+		Backend: &BackendMeta{
+			Type: BackendTypeWebSocket,
+			WebSocket: &WebSocketBackendMeta{
+				Service: "legacy-api",
+				Path:    "/events/stream",
 			},
 		},
 		Timeout: "3s",

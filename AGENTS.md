@@ -80,7 +80,10 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - `NewGatewayPublication(GatewayPublicationSpec)`。
 - `GET(method, path)`、`POST(method, path)`、`HTTP(httpMethod, method, path)`。
 - `HTTPProxy(id, method, path, service)`：声明 HTTP backend 代理路由。
+- `WSProxy(id, path, service)`：声明 WebSocket backend 代理路由。
 - `GatewayRouteSpec.UpstreamPath(path)`：声明 HTTP backend upstream path；为空时 Gateway 使用匹配到的公网 path。
+- `GatewayRouteSpec.SSE()`：把 HTTP backend 路由声明为显式 SSE 流。
+- `GatewayRouteSpec.UpstreamWSPath(path)`：声明 WebSocket backend upstream path；为空时 Gateway 使用匹配到的公网 path。
 - `GatewayRouteSpec.Path(param, field)`。
 - `GatewayRouteSpec.Query(param, field)`。
 - `GatewayRouteSpec.Body(value)`。
@@ -99,6 +102,8 @@ Gateway 动态路由元数据生成和 protobuf descriptor 发布辅助能力。
 - 如果应用需要 `/payment`、`/admin` 等业务前缀，应在 route path 中显式声明。
 - Gateway 应根据 `RouteMeta.GRPC.Service` 和 `RouteMeta.GRPC.FullMethod` 转发，不应从 URL 前缀反推服务名。
 - HTTP backend 路由应设置 `RouteMeta.Backend.Type=http` 和 `RouteMeta.Backend.HTTP.Service`。Gateway 根据 service 解析 registry 实例，并使用实例 metadata 中的 `advertise_http_addr` 作为 upstream 地址。
+- `SSE()` 仅适用于 HTTP backend 路由，当前只支持 `GET`，并且仍然不使用 protobuf binding 或 raw response policy。
+- WebSocket backend 路由应设置 `RouteMeta.Backend.Type=websocket` 和 `RouteMeta.Backend.WebSocket.Service`。Gateway 应把它视为显式升级代理路由，而不是 gRPC 或普通 HTTP backend 路由。
 - HTTP method 支持 `ANY` 表示匹配所有方法；`*` 会规范化为 `ANY`。`ANY + path` 与任何具体 method 的同 path 路由冲突。
 - descriptor id 默认使用 proto package，要求 proto package 稳定。
 - 路由认证白名单必须通过 `Public()` 写入 route metadata。Gateway 不应维护独立 path whitelist；未声明 public 的动态路由在 Gateway 启用认证时默认需要认证。

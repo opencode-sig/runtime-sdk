@@ -330,6 +330,31 @@ The public path is the Gateway path. `UpstreamPath` is the path on the selected
 service instance. Gateway implementations should resolve `backend.http.service`
 through registry and proxy to the instance metadata `advertise_http_addr`.
 
+If the HTTP backend is an explicit Server-Sent Events stream, declare it
+directly in route metadata:
+
+```go
+gatewaymeta.HTTPProxy("payment.events_sse", "GET", "/v1/payments/events", ServiceName).
+	UpstreamPath("/internal/payments/events").
+	SSE().
+	Timeout("30s")
+```
+
+`SSE()` is only valid on HTTP backend routes, currently requires `GET`, and
+still does not use protobuf bindings or raw response metadata.
+
+If the upstream is a WebSocket service, publish an explicit WebSocket proxy
+route:
+
+```go
+gatewaymeta.WSProxy("payment.events_ws", "/v1/payments/ws", ServiceName).
+	UpstreamWSPath("/internal/payments/ws").
+	Timeout("30s")
+```
+
+WebSocket proxy routes stay declarative: no protobuf descriptor, no protobuf
+binding, and no raw response policy.
+
 The service registers the upstream handler with standard library `net/http`:
 
 ```go
