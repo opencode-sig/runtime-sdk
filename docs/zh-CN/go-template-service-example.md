@@ -474,6 +474,18 @@ DNS 路由时，仍然可以显式配置 `payment:9004` 或 `10.0.1.8:9004` 这�
 地址或 Gateway HTTP upstream metadata，但不会把动态端口写回配置中的
 `advertise_grpc_addr` / `advertise_http_addr` 字段。
 
+多网卡环境可以配置 `advertise_ip_cidrs` 限制 SDK 自动选择的 advertised IP：
+
+```yaml
+advertise_ip_cidrs:
+  - 192.168.0.0/16
+```
+
+该配置只影响自动生成的 registry address 和 `advertise_http_addr` metadata，不会改变
+gRPC/HTTP listener 的绑定地址；实际监听仍由 `grpc_addr` 和 `http_addr` 决定。
+显式配置 `advertise_grpc_addr` / `advertise_http_addr` 时仍然优先，不受
+`advertise_ip_cidrs` 限制。
+
 使用 etcd 配置中心时，在 `configs/runtime.yaml` 中切换 provider：
 
 ```yaml

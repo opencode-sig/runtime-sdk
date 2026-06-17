@@ -127,9 +127,13 @@ func isWildcardListenHost(host string) bool {
 }
 
 func (r serviceAddressResolver) resolveLocalAdvertiseIP(ctx context.Context, cfg Config) (net.IP, error) {
+	cidrs, err := parseAdvertiseIPCIDRs(cfg.Service.AdvertiseIPCIDRs)
+	if err != nil {
+		return nil, err
+	}
 	for _, target := range advertiseIPProbeTargets(cfg) {
 		ip, err := r.probeLocalIP(ctx, target)
-		if err == nil && isUsableAdvertiseIP(ip) {
+		if err == nil && isUsableAdvertiseIP(ip) && ipAllowedByCIDRs(ip, cidrs) {
 			return ip, nil
 		}
 	}
@@ -138,14 +142,50 @@ func (r serviceAddressResolver) resolveLocalAdvertiseIP(ctx context.Context, cfg
 		return nil, err
 	}
 	for _, ip := range ips {
-		if ip.To4() != nil {
+		if ip.To4() != nil && ipAllowedByCIDRs(ip, cidrs) {
 			return ip, nil
 		}
 	}
-	if len(ips) > 0 {
-		return ips[0], nil
+	for _, ip := range ips {
+		if ipAllowedByCIDRs(ip, cidrs) {
+			return ip, nil
+		}
+	}
+	if len(cidrs) > 0 {
+		return nil, fmt.Errorf("no usable non-loopback local IP found in advertise_ip_cidrs %v", cfg.Service.AdvertiseIPCIDRs)
 	}
 	return nil, fmt.Errorf("no usable non-loopback local IP found")
+}
+
+func parseAdvertiseIPCIDRs(values []string) ([]*net.IPNet, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	cidrs := make([]*net.IPNet, 0, len(values))
+	for index, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		_, cidr, err := net.ParseCIDR(value)
+		if err != nil {
+			return nil, fmt.Errorf("parse advertise_ip_cidrs[%d] %q: %w", index, value, err)
+		}
+		cidrs = append(cidrs, cidr)
+	}
+	return cidrs, nil
+}
+
+func ipAllowedByCIDRs(ip net.IP, cidrs []*net.IPNet) bool {
+	if len(cidrs) == 0 {
+		return true
+	}
+	for _, cidr := range cidrs {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func advertiseIPProbeTargets(cfg Config) []string {

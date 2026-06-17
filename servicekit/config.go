@@ -59,12 +59,13 @@ type ControlConfig struct {
 }
 
 type ServiceConfig struct {
-	Name              string `json:"name" yaml:"name"`
-	GRPCAddr          string `json:"grpc_addr" yaml:"grpc_addr"`
-	AdvertiseGRPCAddr string `json:"advertise_grpc_addr" yaml:"advertise_grpc_addr"`
-	HTTPAddr          string `json:"http_addr" yaml:"http_addr"`
-	AdvertiseHTTPAddr string `json:"advertise_http_addr" yaml:"advertise_http_addr"`
-	EnablePprof       bool   `json:"enable_pprof" yaml:"enable_pprof"`
+	Name              string   `json:"name" yaml:"name"`
+	GRPCAddr          string   `json:"grpc_addr" yaml:"grpc_addr"`
+	AdvertiseGRPCAddr string   `json:"advertise_grpc_addr" yaml:"advertise_grpc_addr"`
+	HTTPAddr          string   `json:"http_addr" yaml:"http_addr"`
+	AdvertiseHTTPAddr string   `json:"advertise_http_addr" yaml:"advertise_http_addr"`
+	AdvertiseIPCIDRs  []string `json:"advertise_ip_cidrs" yaml:"advertise_ip_cidrs"`
+	EnablePprof       bool     `json:"enable_pprof" yaml:"enable_pprof"`
 }
 
 type RegistryConfig struct {

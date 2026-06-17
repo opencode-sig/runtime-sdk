@@ -68,6 +68,8 @@
   运行时本机 IP，并用 `IP:port` 注册或发布 metadata。
   监听地址端口为 `0` 时，注册或 metadata 会使用 listener 实际绑定端口；该动态端口
   不会写回 `advertise_grpc_addr` / `advertise_http_addr` 配置字段。
+  `advertise_ip_cidrs` 只限制这种自动 advertised IP 选择，不改变 listener 绑定，
+  且不限制显式配置的 advertised 地址。
 - `servicekit.Spec.RegisterHTTP` 是基于标准库 `http.ServeMux` 的业务 HTTP
   handler 注册 hook。它不应要求 Gin、应用 response envelope 或 Gateway
   专用 handler 包。

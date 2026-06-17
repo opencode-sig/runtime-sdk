@@ -3,6 +3,7 @@ package servicekit
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,6 +201,115 @@ func TestResolveServiceAddressAutoUsesProbeLocalIP(t *testing.T) {
 	}
 	if address != "172.18.0.5:9001" {
 		t.Fatalf("address = %q, want 172.18.0.5:9001", address)
+	}
+}
+
+func TestResolveServiceAddressAutoUsesProbeIPWithinCIDR(t *testing.T) {
+	resolver := serviceAddressResolver{
+		dialContext: fakeProbeDialer("192.168.1.10"),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			t.Fatal("interface fallback should not be used")
+			return nil, nil
+		},
+	}
+	address, err := resolver.resolve(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:         ":9001",
+			AdvertiseIPCIDRs: []string{"192.168.0.0/16"},
+		},
+		Registry: RegistryConfig{Etcd: EtcdConfig{
+			Endpoints: []string{"etcd:2379"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if address != "192.168.1.10:9001" {
+		t.Fatalf("address = %q, want 192.168.1.10:9001", address)
+	}
+}
+
+func TestResolveServiceAddressAutoSkipsProbeIPOutsideCIDRAndUsesInterface(t *testing.T) {
+	resolver := serviceAddressResolver{
+		dialContext: fakeProbeDialer("10.0.0.5"),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return []net.Addr{
+				ipNet("172.18.0.5"),
+				ipNet("192.168.1.20"),
+			}, nil
+		},
+	}
+	address, err := resolver.resolve(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:         ":9001",
+			AdvertiseIPCIDRs: []string{"192.168.0.0/16"},
+		},
+		Registry: RegistryConfig{Etcd: EtcdConfig{
+			Endpoints: []string{"etcd:2379"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if address != "192.168.1.20:9001" {
+		t.Fatalf("address = %q, want 192.168.1.20:9001", address)
+	}
+}
+
+func TestResolveServiceAddressAutoFailsWhenNoIPMatchesCIDR(t *testing.T) {
+	resolver := serviceAddressResolver{
+		dialContext: fakeProbeDialer("10.0.0.5"),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			return []net.Addr{ipNet("172.18.0.5")}, nil
+		},
+	}
+	_, err := resolver.resolve(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:         ":9001",
+			AdvertiseIPCIDRs: []string{"192.168.0.0/16"},
+		},
+		Registry: RegistryConfig{Etcd: EtcdConfig{
+			Endpoints: []string{"etcd:2379"},
+		}},
+	})
+	if err == nil {
+		t.Fatal("resolve succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "advertise_ip_cidrs") {
+		t.Fatalf("error = %v, want advertise_ip_cidrs", err)
+	}
+}
+
+func TestResolveServiceAddressInvalidAdvertiseIPCIDR(t *testing.T) {
+	resolver := serviceAddressResolver{}
+	_, err := resolver.resolve(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:         ":9001",
+			AdvertiseIPCIDRs: []string{"not-a-cidr"},
+		},
+	})
+	if err == nil {
+		t.Fatal("resolve succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "parse advertise_ip_cidrs[0]") {
+		t.Fatalf("error = %v, want parse advertise_ip_cidrs[0]", err)
+	}
+}
+
+func TestResolveServiceAddressExplicitAdvertiseIgnoresCIDR(t *testing.T) {
+	resolver := serviceAddressResolver{}
+	address, err := resolver.resolve(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:          ":9001",
+			AdvertiseGRPCAddr: "10.0.0.8:9001",
+			AdvertiseIPCIDRs:  []string{"192.168.0.0/16"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if address != "10.0.0.8:9001" {
+		t.Fatalf("address = %q, want 10.0.0.8:9001", address)
 	}
 }
 

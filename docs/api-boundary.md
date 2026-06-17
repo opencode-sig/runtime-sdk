@@ -92,6 +92,9 @@ in a release note.
   When a listen address uses port `0`, the registry address or metadata uses
   the listener's actual bound port; that dynamic port is not written back to the
   `advertise_grpc_addr` / `advertise_http_addr` config fields.
+  `advertise_ip_cidrs` only constrains this automatic advertised IP selection;
+  it does not change listener binding, and explicit advertised addresses are
+  not constrained by it.
 - `servicekit.Spec.RegisterHTTP` is a standard-library `http.ServeMux` hook for
   service-owned HTTP handlers. It must not require Gin, application response
   envelopes, or Gateway-specific handler packages.

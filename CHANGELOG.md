@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.7 - 2026-06-17
+
+- Added `service.advertise_ip_cidrs` so managed services on multi-homed hosts
+  can constrain automatic advertised IP selection to specific CIDR ranges. The
+  setting only affects SDK-derived registry addresses and HTTP upstream
+  metadata; listener binding remains controlled by `grpc_addr` and `http_addr`,
+  and explicit advertised addresses still take priority.
+
 ## v0.7.6 - 2026-06-17
 
 - Added support for managed services listening on port `0`: when advertised

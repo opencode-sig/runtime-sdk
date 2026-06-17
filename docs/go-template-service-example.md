@@ -528,6 +528,20 @@ an available listen port. When the matching advertised address is empty,
 Gateway HTTP upstream metadata, but it does not write that dynamic port back to
 the `advertise_grpc_addr` / `advertise_http_addr` config fields.
 
+Multi-homed hosts can set `advertise_ip_cidrs` to constrain the advertised IP
+that `servicekit` selects automatically:
+
+```yaml
+advertise_ip_cidrs:
+  - 192.168.0.0/16
+```
+
+This setting only affects SDK-derived registry addresses and
+`advertise_http_addr` metadata. It does not change the gRPC/HTTP listener bind
+addresses; listener binding is still controlled by `grpc_addr` and `http_addr`.
+Explicit `advertise_grpc_addr` / `advertise_http_addr` values continue to take
+priority and are not constrained by `advertise_ip_cidrs`.
+
 ## Config Loader
 
 `cmd/payment/main.go`
