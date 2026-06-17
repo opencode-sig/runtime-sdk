@@ -111,6 +111,43 @@ func TestGRPCServiceExposesControlPlaneMetrics(t *testing.T) {
 	}
 }
 
+func TestGRPCServiceRecordsBoundAddressesForPortZero(t *testing.T) {
+	service := NewGRPCService(GRPCConfig{
+		Name:     "payment",
+		GRPCAddr: "127.0.0.1:0",
+		HTTPAddr: "127.0.0.1:0",
+		Register: func(server *grpc.Server) {},
+	}, nil)
+
+	if err := service.Start(t.Context()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = service.Stop(context.Background())
+	})
+
+	grpcHost, grpcPort, err := net.SplitHostPort(service.BoundGRPCAddr())
+	if err != nil {
+		t.Fatalf("split grpc bound address %q: %v", service.BoundGRPCAddr(), err)
+	}
+	if grpcHost != "127.0.0.1" {
+		t.Fatalf("grpc bound host = %q, want 127.0.0.1", grpcHost)
+	}
+	if grpcPort == "" || grpcPort == "0" {
+		t.Fatalf("grpc bound port = %q, want actual port", grpcPort)
+	}
+	httpHost, httpPort, err := net.SplitHostPort(service.BoundHTTPAddr())
+	if err != nil {
+		t.Fatalf("split http bound address %q: %v", service.BoundHTTPAddr(), err)
+	}
+	if httpHost != "127.0.0.1" {
+		t.Fatalf("http bound host = %q, want 127.0.0.1", httpHost)
+	}
+	if httpPort == "" || httpPort == "0" {
+		t.Fatalf("http bound port = %q, want actual port", httpPort)
+	}
+}
+
 func freeLocalTCPAddr(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

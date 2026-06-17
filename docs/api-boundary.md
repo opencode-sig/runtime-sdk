@@ -8,7 +8,8 @@ do not know anything about a specific application repository.
 - `servicekit`: managed gRPC service entrypoint and service lifecycle
   contract, including the convention-based split config loader, compatible
   single-file bootstrap/managed config loader, SDK-defined DataPlane generation
-  identifiers, and etcd first-run config seeding.
+  identifiers, runtime registry identity lookup, and etcd first-run config
+  seeding.
 - `runtime/component`: generic lifecycle components for HTTP, gRPC, close hooks,
   and registry registration.
 - `runtime/config`: configuration store contracts and etcd-backed store.
@@ -68,6 +69,10 @@ in a release note.
   into service initialization. These fields describe the current log producer
   and must not encode application-specific business identity. Operations aimed
   at another instance should use `target_instance_id`.
+- `instance_id` in a control command should match the current runtime registry
+  instance id. When a managed service listens on port `0`, that instance id is
+  based on the listener's actual bound port; after a rebuild, a new random port
+  updates the current instance id with the new DataPlane.
 - DataPlane generation identifiers are runtime identity, not Gateway or
   business logic. Custom DataPlane owners should call `servicekit.NewGeneration`
   and keep their own lifecycle assembly instead of duplicating generation
@@ -84,6 +89,9 @@ in a release note.
   `advertise_grpc_addr` / `advertise_http_addr` values win; otherwise wildcard
   listen addresses such as `:9004`, `0.0.0.0:9004`, and `[::]:9004` are
   registered or published as a usable local runtime IP plus the listen port.
+  When a listen address uses port `0`, the registry address or metadata uses
+  the listener's actual bound port; that dynamic port is not written back to the
+  `advertise_grpc_addr` / `advertise_http_addr` config fields.
 - `servicekit.Spec.RegisterHTTP` is a standard-library `http.ServeMux` hook for
   service-owned HTTP handlers. It must not require Gin, application response
   envelopes, or Gateway-specific handler packages.

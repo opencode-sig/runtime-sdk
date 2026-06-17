@@ -43,10 +43,11 @@ type ManagerStatus struct {
 
 // RebuildLogContext carries command-plane correlation fields into rebuild logs.
 type RebuildLogContext struct {
-	CommandID  string
-	Command    string
-	Module     string
-	InstanceID string
+	CommandID         string
+	Command           string
+	Module            string
+	InstanceID        string
+	CurrentInstanceID string
 }
 
 func NewManager(builder Builder, logger *logger.Logger) *Manager {
@@ -159,6 +160,22 @@ func (m *Manager) Status() ManagerStatus {
 	return m.status
 }
 
+// RuntimeIdentity returns the effective identity of the currently running
+// DataPlane when it reports one.
+func (m *Manager) RuntimeIdentity() RuntimeIdentity {
+	if m == nil {
+		return RuntimeIdentity{}
+	}
+	m.mu.Lock()
+	current := m.current
+	m.mu.Unlock()
+	identified, ok := current.(runtimeIdentifiedDataPlane)
+	if !ok {
+		return RuntimeIdentity{}
+	}
+	return identified.RuntimeIdentity()
+}
+
 func (m *Manager) recordLocked(running bool, generation string, reason string, err error) {
 	status := ManagerStatus{
 		Running:    running,
@@ -209,6 +226,9 @@ func rebuildFields(logCtx RebuildLogContext, fields ...zap.Field) []zap.Field {
 	}
 	if logCtx.InstanceID != "" {
 		base = append(base, logger.String("target_instance_id", logCtx.InstanceID))
+	}
+	if logCtx.CurrentInstanceID != "" {
+		base = append(base, logger.String("current_instance_id", logCtx.CurrentInstanceID))
 	}
 	return append(base, fields...)
 }

@@ -37,6 +37,10 @@ func resolveServiceAddresses(ctx context.Context, cfg Config) (serviceAdvertiseA
 	return defaultServiceAddressResolver.resolveAll(ctx, cfg)
 }
 
+func resolveServiceAddressesWithBound(ctx context.Context, cfg Config, bound serviceAdvertiseAddresses) (serviceAdvertiseAddresses, error) {
+	return defaultServiceAddressResolver.resolveAllWithBound(ctx, cfg, bound)
+}
+
 func (r serviceAddressResolver) resolve(ctx context.Context, cfg Config) (string, error) {
 	addresses, err := r.resolveAll(ctx, cfg)
 	if err != nil {
@@ -46,15 +50,31 @@ func (r serviceAddressResolver) resolve(ctx context.Context, cfg Config) (string
 }
 
 func (r serviceAddressResolver) resolveAll(ctx context.Context, cfg Config) (serviceAdvertiseAddresses, error) {
+	return r.resolveAllWithBound(ctx, cfg, serviceAdvertiseAddresses{})
+}
+
+func (r serviceAddressResolver) resolveAllWithBound(ctx context.Context, cfg Config, bound serviceAdvertiseAddresses) (serviceAdvertiseAddresses, error) {
 	var localIP net.IP
-	resolveListen := func(kind string, listenAddr string) (string, error) {
+	resolveListen := func(kind string, listenAddr string, boundAddr string) (string, error) {
 		listenAddr = strings.TrimSpace(listenAddr)
 		if listenAddr == "" {
 			return "", nil
 		}
 		host, port, ok := splitServiceListenAddress(listenAddr)
-		if !ok || !isWildcardListenHost(host) {
+		if !ok {
 			return listenAddr, nil
+		}
+		if port == "0" {
+			actualPort, ok := boundServiceListenPort(boundAddr)
+			if ok {
+				port = actualPort
+			}
+		}
+		if !isWildcardListenHost(host) {
+			if port == "0" {
+				return listenAddr, nil
+			}
+			return net.JoinHostPort(host, port), nil
 		}
 		if localIP == nil {
 			ip, err := r.resolveLocalAdvertiseIP(ctx, cfg)
@@ -70,7 +90,7 @@ func (r serviceAddressResolver) resolveAll(ctx context.Context, cfg Config) (ser
 	if address := strings.TrimSpace(cfg.Service.AdvertiseGRPCAddr); address != "" {
 		addresses.GRPC = address
 	} else {
-		address, err := resolveListen("grpc", cfg.Service.GRPCAddr)
+		address, err := resolveListen("grpc", cfg.Service.GRPCAddr, bound.GRPC)
 		if err != nil {
 			return serviceAdvertiseAddresses{}, err
 		}
@@ -79,7 +99,7 @@ func (r serviceAddressResolver) resolveAll(ctx context.Context, cfg Config) (ser
 	if address := strings.TrimSpace(cfg.Service.AdvertiseHTTPAddr); address != "" {
 		addresses.HTTP = address
 	} else {
-		address, err := resolveListen("http", cfg.Service.HTTPAddr)
+		address, err := resolveListen("http", cfg.Service.HTTPAddr, bound.HTTP)
 		if err != nil {
 			return serviceAdvertiseAddresses{}, err
 		}
@@ -94,6 +114,11 @@ func splitServiceListenAddress(address string) (string, string, bool) {
 		return "", "", false
 	}
 	return strings.TrimSpace(host), strings.TrimSpace(port), port != ""
+}
+
+func boundServiceListenPort(address string) (string, bool) {
+	_, port, ok := splitServiceListenAddress(address)
+	return port, ok && port != "" && port != "0"
 }
 
 func isWildcardListenHost(host string) bool {

@@ -17,16 +17,18 @@ var registrationRenewInterval = 5 * time.Second
 var registrationRenewTimeout = 3 * time.Second
 
 type RegistrationComponent struct {
-	registry     registry.Registry
-	instance     registry.ServiceInstance
-	registration registry.Registration
-	logger       *applogger.Logger
-	metrics      *runtimemetrics.ControlPlaneMetrics
-	mu           sync.Mutex
-	renewMu      sync.Mutex
-	healthy      atomic.Bool
-	cancelRenew  context.CancelFunc
-	renewDone    chan struct{}
+	registry            registry.Registry
+	instance            registry.ServiceInstance
+	instanceFactory     func(context.Context) (registry.ServiceInstance, error)
+	registration        registry.Registration
+	logger              *applogger.Logger
+	metrics             *runtimemetrics.ControlPlaneMetrics
+	dataPlaneGeneration string
+	mu                  sync.Mutex
+	renewMu             sync.Mutex
+	healthy             atomic.Bool
+	cancelRenew         context.CancelFunc
+	renewDone           chan struct{}
 }
 
 // NewRegistrationComponent wraps service instance registration as a lifecycle component.
@@ -43,12 +45,23 @@ func NewRegistrationComponent(reg registry.Registry, instance registry.ServiceIn
 	}
 }
 
+// NewDynamicRegistrationComponent wraps service instance registration with an
+// instance factory evaluated when the component starts.
+func NewDynamicRegistrationComponent(reg registry.Registry, factory func(context.Context) (registry.ServiceInstance, error), logger *applogger.Logger) *RegistrationComponent {
+	return &RegistrationComponent{
+		registry:        reg,
+		instanceFactory: factory,
+		logger:          logger,
+	}
+}
+
 // WithDataPlaneGeneration attaches the owning DataPlane generation to the
 // instance registration. The registration start time is recorded when Start is
 // called, because that is when this generation becomes visible in registry.
 func (c *RegistrationComponent) WithDataPlaneGeneration(generation string) *RegistrationComponent {
 	if c != nil {
 		c.mu.Lock()
+		c.dataPlaneGeneration = strings.TrimSpace(generation)
 		c.instance.DataPlaneGeneration = strings.TrimSpace(generation)
 		c.mu.Unlock()
 	}
@@ -67,6 +80,9 @@ func (c *RegistrationComponent) Start(ctx context.Context) error {
 	if c.registry == nil {
 		return errors.New("registry is not configured")
 	}
+	if err := c.refreshInstance(ctx); err != nil {
+		return err
+	}
 	registration, err := c.register(ctx, true)
 	if err != nil {
 		return err
@@ -84,10 +100,30 @@ func (c *RegistrationComponent) Start(ctx context.Context) error {
 	return nil
 }
 
+func (c *RegistrationComponent) refreshInstance(ctx context.Context) error {
+	if c.instanceFactory == nil {
+		return nil
+	}
+	instance, err := c.instanceFactory(ctx)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if c.dataPlaneGeneration != "" {
+		instance.DataPlaneGeneration = c.dataPlaneGeneration
+	}
+	c.instance = instance
+	c.mu.Unlock()
+	return nil
+}
+
 func (c *RegistrationComponent) register(ctx context.Context, markDataPlaneStart bool) (registry.Registration, error) {
 	now := time.Now().UTC()
 	c.mu.Lock()
 	c.instance.LastSeen = now
+	if c.dataPlaneGeneration != "" {
+		c.instance.DataPlaneGeneration = c.dataPlaneGeneration
+	}
 	if markDataPlaneStart || c.instance.DataPlaneStartedAt.IsZero() {
 		c.instance.DataPlaneStartedAt = now
 	}

@@ -91,6 +91,83 @@ func TestResolveServiceAddressesAutoUsesSameLocalIPForGRPCAndHTTP(t *testing.T) 
 	}
 }
 
+func TestResolveServiceAddressesWithBoundUsesActualPortForWildcardPortZero(t *testing.T) {
+	resolver := serviceAddressResolver{
+		dialContext: fakeProbeDialer("172.18.0.5"),
+		interfaceAddrs: func() ([]net.Addr, error) {
+			t.Fatal("interface fallback should not be used")
+			return nil, nil
+		},
+	}
+	addresses, err := resolver.resolveAllWithBound(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr: ":0",
+			HTTPAddr: "0.0.0.0:0",
+		},
+		Registry: RegistryConfig{Etcd: EtcdConfig{
+			Endpoints: []string{"etcd:2379"},
+		}},
+	}, serviceAdvertiseAddresses{
+		GRPC: "[::]:54001",
+		HTTP: "0.0.0.0:55001",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if addresses.GRPC != "172.18.0.5:54001" {
+		t.Fatalf("grpc address = %q, want 172.18.0.5:54001", addresses.GRPC)
+	}
+	if addresses.HTTP != "172.18.0.5:55001" {
+		t.Fatalf("http address = %q, want 172.18.0.5:55001", addresses.HTTP)
+	}
+}
+
+func TestResolveServiceAddressesWithBoundUsesActualPortForConcretePortZero(t *testing.T) {
+	resolver := serviceAddressResolver{}
+	addresses, err := resolver.resolveAllWithBound(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr: "127.0.0.1:0",
+			HTTPAddr: "[::1]:0",
+		},
+	}, serviceAdvertiseAddresses{
+		GRPC: "127.0.0.1:54001",
+		HTTP: "[::1]:55001",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if addresses.GRPC != "127.0.0.1:54001" {
+		t.Fatalf("grpc address = %q, want 127.0.0.1:54001", addresses.GRPC)
+	}
+	if addresses.HTTP != "[::1]:55001" {
+		t.Fatalf("http address = %q, want [::1]:55001", addresses.HTTP)
+	}
+}
+
+func TestResolveServiceAddressesWithBoundKeepsExplicitAdvertiseAddresses(t *testing.T) {
+	resolver := serviceAddressResolver{}
+	addresses, err := resolver.resolveAllWithBound(context.Background(), Config{
+		Service: ServiceConfig{
+			GRPCAddr:          ":0",
+			AdvertiseGRPCAddr: "payment:9001",
+			HTTPAddr:          ":0",
+			AdvertiseHTTPAddr: "payment-http:9101",
+		},
+	}, serviceAdvertiseAddresses{
+		GRPC: "[::]:54001",
+		HTTP: "[::]:55001",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if addresses.GRPC != "payment:9001" {
+		t.Fatalf("grpc address = %q, want payment:9001", addresses.GRPC)
+	}
+	if addresses.HTTP != "payment-http:9101" {
+		t.Fatalf("http address = %q, want payment-http:9101", addresses.HTTP)
+	}
+}
+
 func TestResolveServiceAddressesSkipsHTTPWhenNoHTTPListenAddress(t *testing.T) {
 	resolver := serviceAddressResolver{}
 	addresses, err := resolver.resolveAll(context.Background(), Config{

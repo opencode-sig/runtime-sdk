@@ -4,7 +4,7 @@
 
 ## 公开包
 
-- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、约定式拆分配置 loader、兼容单文件的 bootstrap / managed config loader、SDK 统一的 DataPlane generation 标识和 etcd 首次配置 seed。
+- `servicekit`：受管理 gRPC 服务入口、服务生命周期契约、约定式拆分配置 loader、兼容单文件的 bootstrap / managed config loader、SDK 统一的 DataPlane generation 标识、运行态 registry identity 查询和 etcd 首次配置 seed。
 - `runtime/component`：HTTP、gRPC、close hook、服务注册等通用 lifecycle 组件。
 - `runtime/config`：配置存储契约、本地文件 provider、etcd provider。
 - `runtime/control`：rebuild/restart 控制命令契约和命令存储。
@@ -48,6 +48,9 @@
   `runtime_service`、`runtime_mode`、`instance_id` 等运行时日志身份字段。
   这些字段只描述当前产生日志的实例，不能承载应用业务身份。日志描述被操作的
   其他实例时应使用 `target_instance_id`。
+- control command 中的 `instance_id` 应匹配当前运行态 registry instance id。
+  受管理服务使用端口 `0` 监听时，该 instance id 基于 listener 实际绑定端口生成；
+  rebuild 后如果随机端口变化，当前 instance id 也会随新的 DataPlane 更新。
 - DataPlane generation 是 runtime 层身份，不属于 Gateway 或业务逻辑。
   自定义 DataPlane owner 应调用 `servicekit.NewGeneration`，并保留自己的
   lifecycle 组装逻辑；不要复制 generation 规则，也不要为了复用规则而强行套入
@@ -63,6 +66,8 @@
   `advertise_grpc_addr` / `advertise_http_addr` 时优先使用；否则当监听地址是
   `:9004`、`0.0.0.0:9004` 或 `[::]:9004` 这类 wildcard 地址时，会解析可用的
   运行时本机 IP，并用 `IP:port` 注册或发布 metadata。
+  监听地址端口为 `0` 时，注册或 metadata 会使用 listener 实际绑定端口；该动态端口
+  不会写回 `advertise_grpc_addr` / `advertise_http_addr` 配置字段。
 - `servicekit.Spec.RegisterHTTP` 是基于标准库 `http.ServeMux` 的业务 HTTP
   handler 注册 hook。它不应要求 Gin、应用 response envelope 或 Gateway
   专用 handler 包。

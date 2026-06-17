@@ -2,7 +2,10 @@ package servicekit
 
 import (
 	"context"
+	"net"
 	"testing"
+
+	"google.golang.org/grpc"
 
 	runtimemetrics "github.com/opencode-sig/runtime-sdk/observability/metrics"
 	"github.com/opencode-sig/runtime-sdk/runtime/lifecycle"
@@ -76,6 +79,105 @@ func TestAddServiceRegistrationFallsBackToConcreteHTTPListenAddress(t *testing.T
 
 	if reg.instance.Metadata["advertise_http_addr"] != "127.0.0.1:9101" {
 		t.Fatalf("advertise_http_addr metadata = %q", reg.instance.Metadata["advertise_http_addr"])
+	}
+}
+
+func TestAddServiceRegistrationUsesBoundPortWhenListenPortIsZero(t *testing.T) {
+	reg := &captureRegistry{}
+	app := lifecycle.New("payment")
+	identity := newRuntimeIdentityStore()
+	cfg := ComponentConfig{
+		Config: Config{
+			Service: ServiceConfig{
+				GRPCAddr: "127.0.0.1:0",
+				HTTPAddr: "127.0.0.1:0",
+			},
+		},
+		Spec:        Spec{Name: "payment", RegisterGRPC: func(grpc.ServiceRegistrar) {}},
+		Registry:    reg,
+		RuntimeMode: "distributed",
+		identity:    identity,
+	}
+	controlPlane := runtimemetrics.NewControlPlaneMetrics("payment")
+	grpcService, err := addGRPCService(app, cfg, controlPlane)
+	if err != nil {
+		t.Fatalf("add grpc service: %v", err)
+	}
+	if err := addServiceRegistration(app, cfg, controlPlane, grpcService); err != nil {
+		t.Fatalf("add registration: %v", err)
+	}
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = app.Stop(context.Background())
+	})
+
+	host, port, err := net.SplitHostPort(reg.instance.Address)
+	if err != nil {
+		t.Fatalf("split grpc address %q: %v", reg.instance.Address, err)
+	}
+	if host != "127.0.0.1" {
+		t.Fatalf("grpc address host = %q, want 127.0.0.1", host)
+	}
+	if port == "" || port == "0" {
+		t.Fatalf("grpc address port = %q, want actual port", port)
+	}
+	httpHost, httpPort, err := net.SplitHostPort(reg.instance.Metadata["advertise_http_addr"])
+	if err != nil {
+		t.Fatalf("split http address %q: %v", reg.instance.Metadata["advertise_http_addr"], err)
+	}
+	if httpHost != "127.0.0.1" {
+		t.Fatalf("http address host = %q, want 127.0.0.1", httpHost)
+	}
+	if httpPort == "" || httpPort == "0" {
+		t.Fatalf("http address port = %q, want actual port", httpPort)
+	}
+	runtimeIdentity := identity.Get()
+	if runtimeIdentity.InstanceID != reg.instance.ID {
+		t.Fatalf("runtime identity instance id = %q, want registry instance id %q", runtimeIdentity.InstanceID, reg.instance.ID)
+	}
+	if runtimeIdentity.Address != reg.instance.Address {
+		t.Fatalf("runtime identity address = %q, want registry address %q", runtimeIdentity.Address, reg.instance.Address)
+	}
+}
+
+func TestAddServiceRegistrationKeepsExplicitAdvertiseAddressWhenListenPortIsZero(t *testing.T) {
+	reg := &captureRegistry{}
+	app := lifecycle.New("payment")
+	cfg := ComponentConfig{
+		Config: Config{
+			Service: ServiceConfig{
+				GRPCAddr:          "127.0.0.1:0",
+				AdvertiseGRPCAddr: "payment:9001",
+				HTTPAddr:          "127.0.0.1:0",
+				AdvertiseHTTPAddr: "payment-http:9101",
+			},
+		},
+		Spec:        Spec{Name: "payment", RegisterGRPC: func(grpc.ServiceRegistrar) {}},
+		Registry:    reg,
+		RuntimeMode: "distributed",
+	}
+	controlPlane := runtimemetrics.NewControlPlaneMetrics("payment")
+	grpcService, err := addGRPCService(app, cfg, controlPlane)
+	if err != nil {
+		t.Fatalf("add grpc service: %v", err)
+	}
+	if err := addServiceRegistration(app, cfg, controlPlane, grpcService); err != nil {
+		t.Fatalf("add registration: %v", err)
+	}
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = app.Stop(context.Background())
+	})
+
+	if reg.instance.Address != "payment:9001" {
+		t.Fatalf("instance address = %q, want payment:9001", reg.instance.Address)
+	}
+	if reg.instance.Metadata["advertise_http_addr"] != "payment-http:9101" {
+		t.Fatalf("advertise_http_addr metadata = %q, want payment-http:9101", reg.instance.Metadata["advertise_http_addr"])
 	}
 }
 

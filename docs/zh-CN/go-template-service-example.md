@@ -469,6 +469,11 @@ settings:
 DNS 路由时，仍然可以显式配置 `payment:9004` 或 `10.0.1.8:9004` 这类可达地址，
 显式配置始终优先。
 
+`grpc_addr` 和 `http_addr` 可以使用端口 `0` 让操作系统分配可用监听端口；如果
+对应的 advertised 地址为空，`servicekit` 会使用 listener 实际绑定端口生成注册
+地址或 Gateway HTTP upstream metadata，但不会把动态端口写回配置中的
+`advertise_grpc_addr` / `advertise_http_addr` 字段。
+
 使用 etcd 配置中心时，在 `configs/runtime.yaml` 中切换 provider：
 
 ```yaml
@@ -493,6 +498,10 @@ etcd 模式会从配置中心读取同名逻辑 key。如果 key 不存在且本
 如果 `configs/runtime.yaml` 中的 `config.provider` 为 `etcd`，并配置了 `control.commands_prefix`，`servicekit.Run` 会启动 control watcher。合成后的 `servicekit.Config` 会把这些值放到 `runtime.config` 和 `runtime.control`。runtime-admin 或其他管理端可以发布 `rebuild` 或 `restart` 命令，服务收到后会重建 DataPlane。
 
 rebuild 语义是 stop-start replacement：创建新 DataPlane，停止旧 generation，再启动新 generation。同一进程复用相同 gRPC/HTTP 端口时，不承诺零停机。
+
+如果控制命令填写 `instance_id`，匹配的是当前运行态 registry instance id。`grpc_addr`
+使用端口 `0` 时，该 instance id 会基于 listener 实际绑定端口生成；rebuild 后如果随机端口
+变化，新的 DataPlane 会拥有新的 instance id。管理端发送定向命令前应从 registry 查询当前实例。
 
 ## 通过服务名访问其他 gRPC 服务
 

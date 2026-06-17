@@ -73,6 +73,35 @@ func TestManagerRebuildStartFailureClearsCurrent(t *testing.T) {
 	}
 }
 
+func TestManagerRuntimeIdentityUsesCurrentDataPlane(t *testing.T) {
+	planes := []*fakeIdentifiedDataPlane{
+		{identity: RuntimeIdentity{Service: "order", Address: "127.0.0.1:2001", InstanceID: "instance-a"}},
+		{identity: RuntimeIdentity{Service: "order", Address: "127.0.0.1:2002", InstanceID: "instance-b"}},
+	}
+	index := 0
+	manager := NewManager(func(ctx context.Context) (DataPlane, error) {
+		plane := planes[index]
+		index++
+		return plane, nil
+	}, nil)
+
+	if identity := manager.RuntimeIdentity(); identity.InstanceID != "" {
+		t.Fatalf("identity before start = %+v, want empty", identity)
+	}
+	if _, err := manager.Rebuild(context.Background(), "first"); err != nil {
+		t.Fatalf("first rebuild: %v", err)
+	}
+	if identity := manager.RuntimeIdentity(); identity.InstanceID != "instance-a" {
+		t.Fatalf("identity after first rebuild = %+v, want instance-a", identity)
+	}
+	if _, err := manager.Rebuild(context.Background(), "second"); err != nil {
+		t.Fatalf("second rebuild: %v", err)
+	}
+	if identity := manager.RuntimeIdentity(); identity.InstanceID != "instance-b" {
+		t.Fatalf("identity after second rebuild = %+v, want instance-b", identity)
+	}
+}
+
 type fakeDataPlane struct {
 	started  bool
 	stopped  bool
@@ -95,4 +124,13 @@ func (p *fakeDataPlane) Stop(ctx context.Context) error {
 
 func (p *fakeDataPlane) Health(ctx context.Context) error {
 	return nil
+}
+
+type fakeIdentifiedDataPlane struct {
+	fakeDataPlane
+	identity RuntimeIdentity
+}
+
+func (p *fakeIdentifiedDataPlane) RuntimeIdentity() RuntimeIdentity {
+	return p.identity
 }

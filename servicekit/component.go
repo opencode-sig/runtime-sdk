@@ -13,10 +13,10 @@ import (
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
 
-func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics) error {
+func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics) (*runtimecomponent.GRPCService, error) {
 	service := cfg.Config.Service
 	if strings.TrimSpace(service.GRPCAddr) == "" {
-		return fmt.Errorf("service %s grpc_addr is required", cfg.Spec.Name)
+		return nil, fmt.Errorf("service %s grpc_addr is required", cfg.Spec.Name)
 	}
 	server := runtimecomponent.NewGRPCService(runtimecomponent.GRPCConfig{
 		Name:            cfg.Spec.Name,
@@ -30,24 +30,44 @@ func addGRPCService(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *r
 		},
 		RegisterHTTP: cfg.Spec.RegisterHTTP,
 	}, cfg.Logger)
-	return app.Add(cfg.Spec.Name+"_grpc", server)
+	if err := app.Add(cfg.Spec.Name+"_grpc", server); err != nil {
+		return nil, err
+	}
+	return server, nil
 }
 
-func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics) error {
+func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics, grpcServices ...*runtimecomponent.GRPCService) error {
 	service := cfg.Config.Service
-	addresses, err := resolveServiceAddresses(context.Background(), cfg.Config)
-	if err != nil {
-		return err
+	var grpcService *runtimecomponent.GRPCService
+	if len(grpcServices) > 0 {
+		grpcService = grpcServices[0]
 	}
-	if addresses.GRPC == "" {
-		return fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
+	instanceFactory := func(ctx context.Context) (registry.ServiceInstance, error) {
+		var bound serviceAdvertiseAddresses
+		if grpcService != nil {
+			bound.GRPC = grpcService.BoundGRPCAddr()
+			bound.HTTP = grpcService.BoundHTTPAddr()
+		}
+		addresses, err := resolveServiceAddressesWithBound(ctx, cfg.Config, bound)
+		if err != nil {
+			return registry.ServiceInstance{}, err
+		}
+		if addresses.GRPC == "" {
+			return registry.ServiceInstance{}, fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
+		}
+		instance := registry.NewServiceInstance(cfg.Spec.Name, addresses.GRPC, map[string]string{
+			"runtime":             strings.TrimSpace(cfg.RuntimeMode),
+			"http_addr":           service.HTTPAddr,
+			"advertise_http_addr": addresses.HTTP,
+		})
+		cfg.identity.Set(RuntimeIdentity{
+			Service:    instance.Name,
+			Address:    instance.Address,
+			InstanceID: instance.ID,
+		})
+		return instance, nil
 	}
-	instance := registry.NewServiceInstance(cfg.Spec.Name, addresses.GRPC, map[string]string{
-		"runtime":             strings.TrimSpace(cfg.RuntimeMode),
-		"http_addr":           service.HTTPAddr,
-		"advertise_http_addr": addresses.HTTP,
-	})
-	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewRegistrationComponent(cfg.Registry, instance, cfg.Logger).
+	return app.Add(cfg.Spec.Name+"_registry", runtimecomponent.NewDynamicRegistrationComponent(cfg.Registry, instanceFactory, cfg.Logger).
 		WithDataPlaneGeneration(cfg.DataPlaneGeneration).
 		WithControlPlaneMetrics(controlPlane))
 }

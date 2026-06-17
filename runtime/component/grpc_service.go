@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -34,12 +35,15 @@ type GRPCConfig struct {
 }
 
 type GRPCService struct {
-	cfg          GRPCConfig
-	logger       *applogger.Logger
-	metrics      *metrics.Metrics
-	grpcServer   *grpc.Server
-	healthServer *grpchealth.Server
-	httpServer   *http.Server
+	cfg           GRPCConfig
+	logger        *applogger.Logger
+	metrics       *metrics.Metrics
+	grpcServer    *grpc.Server
+	healthServer  *grpchealth.Server
+	httpServer    *http.Server
+	mu            sync.RWMutex
+	boundGRPCAddr string
+	boundHTTPAddr string
 }
 
 // NewGRPCService creates a lifecycle-managed gRPC service component.
@@ -65,6 +69,7 @@ func (s *GRPCService) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.setBoundGRPCAddr(grpcListener.Addr().String())
 
 	s.healthServer = grpchealth.NewServer()
 	s.grpcServer = grpc.NewServer(grpc.ChainUnaryInterceptor(
@@ -83,6 +88,7 @@ func (s *GRPCService) Start(ctx context.Context) error {
 				applogger.Event("grpc_server_started"),
 				applogger.Module(s.cfg.Name),
 				applogger.String("addr", s.cfg.GRPCAddr),
+				applogger.String("bound_addr", s.BoundGRPCAddr()),
 			)
 		}
 		if err := s.grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
@@ -130,6 +136,34 @@ func (s *GRPCService) Stop(ctx context.Context) error {
 		}
 	}
 	return httpErr
+}
+
+// BoundGRPCAddr returns the address selected by net.Listen for the gRPC server.
+// It is useful when the configured listen address uses port 0.
+func (s *GRPCService) BoundGRPCAddr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.boundGRPCAddr
+}
+
+// BoundHTTPAddr returns the address selected by net.Listen for the service HTTP server.
+// It is empty when the service HTTP listener is disabled.
+func (s *GRPCService) BoundHTTPAddr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.boundHTTPAddr
+}
+
+func (s *GRPCService) setBoundGRPCAddr(address string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.boundGRPCAddr = address
+}
+
+func (s *GRPCService) setBoundHTTPAddr(address string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.boundHTTPAddr = address
 }
 
 // Health checks whether the gRPC server has started.
@@ -183,12 +217,14 @@ func (s *GRPCService) startHTTP() error {
 	if err != nil {
 		return err
 	}
+	s.setBoundHTTPAddr(listener.Addr().String())
 	go func() {
 		if s.logger != nil {
 			s.logger.Warn(context.Background(), "service http server started",
 				applogger.Event("service_http_server_started"),
 				applogger.Module(s.cfg.Name),
 				applogger.String("addr", s.cfg.HTTPAddr),
+				applogger.String("bound_addr", s.BoundHTTPAddr()),
 			)
 		}
 		if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

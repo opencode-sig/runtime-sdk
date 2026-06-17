@@ -56,3 +56,22 @@ func TestLoggerWithRuntimeIdentityFallsBackToListenAddress(t *testing.T) {
 		t.Fatalf("instance_id = %v, want %s", fields["instance_id"], expectedInstanceID)
 	}
 }
+
+func TestLoggerWithRuntimeIdentitySkipsPortZeroInstanceID(t *testing.T) {
+	core, logs := observer.New(zap.InfoLevel)
+	base := sdklogger.Wrap(zap.New(core))
+
+	log := loggerWithRuntimeIdentity(base, Config{
+		Service: ServiceConfig{
+			Name:     "scheduler",
+			GRPCAddr: "127.0.0.1:0",
+		},
+	}, Spec{Name: "scheduler"}, "distributed")
+
+	log.Info(context.Background(), "hello")
+
+	fields := logs.All()[0].ContextMap()
+	if _, ok := fields["instance_id"]; ok {
+		t.Fatalf("instance_id = %v, want omitted for port 0 listen address", fields["instance_id"])
+	}
+}

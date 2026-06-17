@@ -140,6 +140,7 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 	if !w.accept(command) {
 		return
 	}
+	currentIdentity := w.manager.RuntimeIdentity()
 	switch strings.ToLower(strings.TrimSpace(command.Command)) {
 	case runtimecontrol.CommandRebuild, runtimecontrol.CommandRestart:
 		if command.CreatedAt.IsZero() {
@@ -150,10 +151,11 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 			reason = command.Command
 		}
 		logCtx := RebuildLogContext{
-			CommandID:  commandID(command),
-			Command:    strings.ToLower(strings.TrimSpace(command.Command)),
-			Module:     firstNonEmpty(strings.TrimSpace(command.Service), w.service),
-			InstanceID: strings.TrimSpace(command.InstanceID),
+			CommandID:         commandID(command),
+			Command:           strings.ToLower(strings.TrimSpace(command.Command)),
+			Module:            firstNonEmpty(strings.TrimSpace(command.Service), w.service),
+			InstanceID:        strings.TrimSpace(command.InstanceID),
+			CurrentInstanceID: currentIdentity.InstanceID,
 		}
 		rebuildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -165,6 +167,7 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 					logger.Module(logCtx.Module),
 					logger.String("command_id", logCtx.CommandID),
 					logger.String("target_instance_id", logCtx.InstanceID),
+					logger.String("current_instance_id", logCtx.CurrentInstanceID),
 				), logger.ErrorFields(err)...)...)
 			}
 			return
@@ -176,6 +179,7 @@ func (w *ControlWatcher) handle(ctx context.Context, command runtimecontrol.Comm
 				logger.Module(logCtx.Module),
 				logger.String("command_id", logCtx.CommandID),
 				logger.String("target_instance_id", logCtx.InstanceID),
+				logger.String("current_instance_id", logCtx.CurrentInstanceID),
 				logger.String("reason", reason),
 			)
 		}
@@ -196,7 +200,14 @@ func (w *ControlWatcher) accept(command runtimecontrol.Command) bool {
 		return false
 	}
 	instanceID := strings.TrimSpace(command.InstanceID)
-	return instanceID == "" || instanceID == w.instanceID
+	if instanceID == "" {
+		return true
+	}
+	current := w.manager.RuntimeIdentity()
+	if current.InstanceID != "" {
+		return instanceID == current.InstanceID
+	}
+	return instanceID == w.instanceID
 }
 
 func commandID(command runtimecontrol.Command) string {
@@ -216,8 +227,9 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// ControlConfigForService returns the command watcher routing identity for a
-// service config.
+// ControlConfigForService returns the command watcher routing config for a
+// service. InstanceID is a config-derived fallback; managed DataPlanes prefer
+// the current runtime registry instance id after startup.
 func ControlConfigForService(cfg Config) (ControlWatcherConfig, error) {
 	service, address, err := ServiceIdentity(cfg)
 	if err != nil {

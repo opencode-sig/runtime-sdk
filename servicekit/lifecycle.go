@@ -31,6 +31,7 @@ type ComponentConfig struct {
 	RuntimeMode         string
 	DataPlaneGeneration string
 	Logger              *logger.Logger
+	identity            *runtimeIdentityStore
 }
 
 // NewComponent returns a component factory for one service spec.
@@ -101,11 +102,12 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		}
 	}
 	controlPlane := runtimemetrics.NewControlPlaneMetrics(cfg.Spec.Name)
-	if err := addGRPCService(app, cfg, controlPlane); err != nil {
+	grpcService, err := addGRPCService(app, cfg, controlPlane)
+	if err != nil {
 		return err
 	}
 	if cfg.Registry != nil {
-		if err := addServiceRegistration(app, cfg, controlPlane); err != nil {
+		if err := addServiceRegistration(app, cfg, controlPlane, grpcService); err != nil {
 			return err
 		}
 	}

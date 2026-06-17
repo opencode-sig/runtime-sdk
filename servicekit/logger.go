@@ -23,7 +23,7 @@ func loggerWithRuntimeIdentity(base *logger.Logger, cfg Config, spec Spec, runti
 	if mode := strings.TrimSpace(runtimeMode); mode != "" {
 		fields = append(fields, logger.String("runtime_mode", mode))
 	}
-	if serviceName != "" && address != "" {
+	if serviceName != "" && address != "" && !isPortZeroAddress(address) {
 		fields = append(fields, logger.String("instance_id", registry.InstanceID(serviceName, address)))
 	}
 	return base.With(fields...)
@@ -38,4 +38,9 @@ func serviceAddress(cfg Config) string {
 		return address
 	}
 	return strings.TrimSpace(cfg.Service.GRPCAddr)
+}
+
+func isPortZeroAddress(address string) bool {
+	_, port, ok := splitServiceListenAddress(address)
+	return ok && port == "0"
 }

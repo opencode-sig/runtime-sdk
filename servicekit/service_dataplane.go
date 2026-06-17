@@ -19,22 +19,24 @@ type ServiceDataPlane struct {
 	config     Config
 	lifecycle  *lifecycle.Runtime
 	logger     *logger.Logger
+	identity   *runtimeIdentityStore
 }
 
 func NewServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*ServiceDataPlane, error) {
 	generation := NewGeneration(spec.Name)
-	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation)
+	identity := newRuntimeIdentityStore()
+	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation, identity)
 	if err != nil {
 		return nil, err
 	}
-	return newDataPlaneWithGeneration(generation, cfg, app, log)
+	return newDataPlaneWithGeneration(generation, cfg, app, log, identity)
 }
 
 func NewDataPlane(name string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
-	return newDataPlaneWithGeneration(NewGeneration(name), cfg, app, log)
+	return newDataPlaneWithGeneration(NewGeneration(name), cfg, app, log, nil)
 }
 
-func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Runtime, log *logger.Logger) (*ServiceDataPlane, error) {
+func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Runtime, log *logger.Logger, identity *runtimeIdentityStore) (*ServiceDataPlane, error) {
 	if app == nil {
 		return nil, fmt.Errorf("data plane lifecycle is required")
 	}
@@ -43,6 +45,7 @@ func newDataPlaneWithGeneration(generation string, cfg Config, app *lifecycle.Ru
 		config:     cfg,
 		lifecycle:  app,
 		logger:     log,
+		identity:   identity,
 	}, nil
 }
 
@@ -87,6 +90,13 @@ func (r *ServiceDataPlane) Config() Config {
 		return Config{}
 	}
 	return r.config
+}
+
+func (r *ServiceDataPlane) RuntimeIdentity() RuntimeIdentity {
+	if r == nil {
+		return RuntimeIdentity{}
+	}
+	return r.identity.Get()
 }
 
 func (r *ServiceDataPlane) Start(ctx context.Context) error {

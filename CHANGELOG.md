@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.6 - 2026-06-17
+
+- Added support for managed services listening on port `0`: when advertised
+  addresses are empty, registry addresses and HTTP upstream metadata now use the
+  listener's actual bound port without writing it back to config. Targeted
+  control commands now match the current runtime registry instance id so
+  rebuilds that pick a new random port keep instance targeting consistent.
+
 ## v0.7.5 - 2026-06-10
 
 - Added `gatewaymeta.WSProxy` for declarative WebSocket backend proxy routes.

@@ -522,6 +522,12 @@ service runs across machines or networks with DNS-based routing, an explicit
 advertised address such as `payment:9003` or `10.0.1.8:9003` still takes
 priority and should be reachable by other processes.
 
+`grpc_addr` and `http_addr` may use port `0` to let the operating system choose
+an available listen port. When the matching advertised address is empty,
+`servicekit` uses the listener's actual bound port for registry addresses or
+Gateway HTTP upstream metadata, but it does not write that dynamic port back to
+the `advertise_grpc_addr` / `advertise_http_addr` config fields.
+
 ## Config Loader
 
 `cmd/payment/main.go`
@@ -645,6 +651,12 @@ commands. The composed `servicekit.Config` stores those values under
 
 The business service does not need to watch etcd or restart itself manually.
 That behavior belongs to `servicekit`.
+
+When a control command includes `instance_id`, it is matched against the
+current runtime registry instance id. If `grpc_addr` uses port `0`, that
+instance id is based on the listener's actual bound port; after a rebuild, a new
+random port may produce a new instance id. Runtime-admin tools should query the
+registry for the current instance before sending targeted commands.
 
 ## How go-template Gateway Finds the Service
 
