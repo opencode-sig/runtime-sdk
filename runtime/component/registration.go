@@ -13,8 +13,8 @@ import (
 	"github.com/opencode-sig/runtime-sdk/runtime/registry"
 )
 
-var registrationRenewInterval = 5 * time.Second
-var registrationRenewTimeout = 3 * time.Second
+var registrationRenewInterval = 30 * time.Second
+var registrationRenewTimeout = 15 * time.Second
 
 type RegistrationComponent struct {
 	registry            registry.Registry
