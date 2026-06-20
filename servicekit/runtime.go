@@ -13,10 +13,10 @@ import (
 
 // NewServiceLifecycle builds the lifecycle graph for one service DataPlane.
 func NewServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*lifecycle.Runtime, error) {
-	return newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, "", nil)
+	return newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, "", nil, nil)
 }
 
-func newServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger, dataPlaneGeneration string, identity *runtimeIdentityStore) (*lifecycle.Runtime, error) {
+func newServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger, dataPlaneGeneration string, identity *runtimeIdentityStore, onBound BoundAddressHandler) (*lifecycle.Runtime, error) {
 	validSpec, err := NewSpec(spec)
 	if err != nil {
 		return nil, err
@@ -40,6 +40,7 @@ func newServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode
 			Infra:               infra,
 			RuntimeMode:         runtimeMode,
 			DataPlaneGeneration: dataPlaneGeneration,
+			OnBound:             onBound,
 			Logger:              log,
 			identity:            identity,
 		}); err != nil {
@@ -82,6 +83,7 @@ func newServiceLifecycle(ctx context.Context, cfg Config, spec Spec, runtimeMode
 		Infra:               infra,
 		RuntimeMode:         runtimeMode,
 		DataPlaneGeneration: dataPlaneGeneration,
+		OnBound:             onBound,
 		Logger:              log,
 		identity:            identity,
 	}); err != nil {

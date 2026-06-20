@@ -17,6 +17,7 @@ type RunOptions struct {
 	Spec       Spec
 	LoadConfig ConfigLoader
 	Logger     *logger.Logger
+	OnBound    BoundAddressHandler
 }
 
 // Run starts a standalone managed gRPC service process.
@@ -58,7 +59,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 				return nil, err
 			}
 		}
-		return NewServiceDataPlane(ctx, cfg, spec, RuntimeModeDistributed, log)
+		return newServiceDataPlane(ctx, cfg, spec, RuntimeModeDistributed, log, opts.OnBound)
 	}, log)
 	if err := manager.Start(ctx); err != nil {
 		return err

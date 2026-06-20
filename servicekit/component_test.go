@@ -86,6 +86,7 @@ func TestAddServiceRegistrationUsesBoundPortWhenListenPortIsZero(t *testing.T) {
 	reg := &captureRegistry{}
 	app := lifecycle.New("payment")
 	identity := newRuntimeIdentityStore()
+	var boundEvent BoundAddresses
 	cfg := ComponentConfig{
 		Config: Config{
 			Service: ServiceConfig{
@@ -97,6 +98,9 @@ func TestAddServiceRegistrationUsesBoundPortWhenListenPortIsZero(t *testing.T) {
 		Registry:    reg,
 		RuntimeMode: "distributed",
 		identity:    identity,
+		OnBound: func(ctx context.Context, addresses BoundAddresses) {
+			boundEvent = addresses
+		},
 	}
 	controlPlane := runtimemetrics.NewControlPlaneMetrics("payment")
 	grpcService, err := addGRPCService(app, cfg, controlPlane)
@@ -105,6 +109,9 @@ func TestAddServiceRegistrationUsesBoundPortWhenListenPortIsZero(t *testing.T) {
 	}
 	if err := addServiceRegistration(app, cfg, controlPlane, grpcService); err != nil {
 		t.Fatalf("add registration: %v", err)
+	}
+	if err := addBoundAddressReporter(app, cfg, grpcService); err != nil {
+		t.Fatalf("add bound address reporter: %v", err)
 	}
 	if err := app.Start(t.Context()); err != nil {
 		t.Fatalf("start: %v", err)
@@ -139,6 +146,18 @@ func TestAddServiceRegistrationUsesBoundPortWhenListenPortIsZero(t *testing.T) {
 	}
 	if runtimeIdentity.Address != reg.instance.Address {
 		t.Fatalf("runtime identity address = %q, want registry address %q", runtimeIdentity.Address, reg.instance.Address)
+	}
+	if boundEvent.Service != "payment" {
+		t.Fatalf("bound event service = %q, want payment", boundEvent.Service)
+	}
+	if boundEvent.GRPCListenAddr == "" || boundEvent.HTTPListenAddr == "" {
+		t.Fatalf("bound event listen addresses = %+v, want non-empty", boundEvent)
+	}
+	if boundEvent.AdvertiseGRPCAddr != reg.instance.Address {
+		t.Fatalf("bound event grpc advertise = %q, want %q", boundEvent.AdvertiseGRPCAddr, reg.instance.Address)
+	}
+	if boundEvent.AdvertiseHTTPAddr != reg.instance.Metadata["advertise_http_addr"] {
+		t.Fatalf("bound event http advertise = %q, want %q", boundEvent.AdvertiseHTTPAddr, reg.instance.Metadata["advertise_http_addr"])
 	}
 }
 

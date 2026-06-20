@@ -72,6 +72,35 @@ func addServiceRegistration(app *lifecycle.Runtime, cfg ComponentConfig, control
 		WithControlPlaneMetrics(controlPlane))
 }
 
+func addBoundAddressReporter(app *lifecycle.Runtime, cfg ComponentConfig, grpcService *runtimecomponent.GRPCService) error {
+	if cfg.OnBound == nil {
+		return nil
+	}
+	snapshot := func(ctx context.Context) (BoundAddresses, error) {
+		var bound serviceAdvertiseAddresses
+		if grpcService != nil {
+			bound.GRPC = grpcService.BoundGRPCAddr()
+			bound.HTTP = grpcService.BoundHTTPAddr()
+		}
+		addresses, err := resolveServiceAddressesWithBound(ctx, cfg.Config, bound)
+		if err != nil {
+			return BoundAddresses{}, err
+		}
+		if addresses.GRPC == "" {
+			return BoundAddresses{}, fmt.Errorf("service %s advertise grpc addr is required", cfg.Spec.Name)
+		}
+		return BoundAddresses{
+			Service:           cfg.Spec.Name,
+			Generation:        cfg.DataPlaneGeneration,
+			GRPCListenAddr:    bound.GRPC,
+			HTTPListenAddr:    bound.HTTP,
+			AdvertiseGRPCAddr: addresses.GRPC,
+			AdvertiseHTTPAddr: addresses.HTTP,
+		}, nil
+	}
+	return app.Add(cfg.Spec.Name+"_bound_addresses", newBoundAddressComponent(snapshot, cfg.OnBound))
+}
+
 func addGatewayMetadata(app *lifecycle.Runtime, cfg ComponentConfig, controlPlane *runtimemetrics.ControlPlaneMetrics) error {
 	routes, descriptors, err := cfg.Spec.GatewayMetadata()
 	if err != nil {

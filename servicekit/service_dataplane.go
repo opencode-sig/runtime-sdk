@@ -23,9 +23,13 @@ type ServiceDataPlane struct {
 }
 
 func NewServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger) (*ServiceDataPlane, error) {
+	return newServiceDataPlane(ctx, cfg, spec, runtimeMode, log, nil)
+}
+
+func newServiceDataPlane(ctx context.Context, cfg Config, spec Spec, runtimeMode string, log *logger.Logger, onBound BoundAddressHandler) (*ServiceDataPlane, error) {
 	generation := NewGeneration(spec.Name)
 	identity := newRuntimeIdentityStore()
-	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation, identity)
+	app, err := newServiceLifecycle(ctx, cfg, spec, runtimeMode, log, generation, identity, onBound)
 	if err != nil {
 		return nil, err
 	}

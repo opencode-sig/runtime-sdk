@@ -30,6 +30,7 @@ type ComponentConfig struct {
 	Configs             *Configs
 	RuntimeMode         string
 	DataPlaneGeneration string
+	OnBound             BoundAddressHandler
 	Logger              *logger.Logger
 	identity            *runtimeIdentityStore
 }
@@ -115,6 +116,9 @@ func AddToLifecycle(app *lifecycle.Runtime, cfg ComponentConfig) error {
 		if err := addGatewayMetadata(app, cfg, controlPlane); err != nil {
 			return err
 		}
+	}
+	if err := addBoundAddressReporter(app, cfg, grpcService); err != nil {
+		return err
 	}
 	closeConfigsOnError = false
 	return nil
