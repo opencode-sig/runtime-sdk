@@ -1,8 +1,11 @@
 package servicekit
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	inframysql "github.com/opencode-sig/runtime-sdk/infra/mysql"
 )
 
 func TestEtcdConfigStore(t *testing.T) {
@@ -73,4 +76,108 @@ func TestControlConfigCommandTTLDuration(t *testing.T) {
 	if _, err := (ControlConfig{CommandTTL: "bad"}).CommandTTLDuration(); err == nil {
 		t.Fatal("invalid CommandTTLDuration error = nil")
 	}
+}
+
+func TestMySQLConfigsResolve(t *testing.T) {
+	cfgs := MySQLConfigs{
+		"default": testMySQLConfig("app"),
+		"report":  testMySQLConfig("report"),
+	}
+
+	name, cfg, err := cfgs.Resolve()
+	if err != nil {
+		t.Fatalf("resolve default: %v", err)
+	}
+	if name != "default" || cfg.WriteDSNs[0] != testMySQLDSN("app") {
+		t.Fatalf("default = %q %#v, want default app", name, cfg)
+	}
+
+	name, cfg, err = cfgs.Resolve(" report ")
+	if err != nil {
+		t.Fatalf("resolve report: %v", err)
+	}
+	if name != "report" || cfg.WriteDSNs[0] != testMySQLDSN("report") {
+		t.Fatalf("report = %q %#v, want report config", name, cfg)
+	}
+
+	if _, _, err := cfgs.Resolve("missing"); err == nil || !strings.Contains(err.Error(), `mysql instance "missing" is not configured`) {
+		t.Fatalf("missing error = %v", err)
+	}
+}
+
+func TestMySQLConfigsResolveSingleInstanceAsDefault(t *testing.T) {
+	cfgs := MySQLConfigs{"analytics": testMySQLConfig("analytics")}
+
+	name, cfg, err := cfgs.Resolve()
+	if err != nil {
+		t.Fatalf("resolve single instance: %v", err)
+	}
+	if name != "analytics" || cfg.WriteDSNs[0] != testMySQLDSN("analytics") {
+		t.Fatalf("single default = %q %#v, want analytics", name, cfg)
+	}
+}
+
+func TestMySQLConfigsValidate(t *testing.T) {
+	if err := (MySQLConfigs{}).Validate(); err != nil {
+		t.Fatalf("empty configs validate: %v", err)
+	}
+
+	valid := MySQLConfigs{
+		"default": testMySQLConfig("app"),
+		"report":  testMySQLConfig("report"),
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid configs validate: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		cfg       MySQLConfigs
+		wantError string
+	}{
+		{
+			name:      "empty instance name",
+			cfg:       MySQLConfigs{"": testMySQLConfig("app")},
+			wantError: "mysql instance name is required",
+		},
+		{
+			name:      "whitespace instance name",
+			cfg:       MySQLConfigs{" report ": testMySQLConfig("report")},
+			wantError: `mysql instance " report " must not contain surrounding whitespace`,
+		},
+		{
+			name:      "empty instance config",
+			cfg:       MySQLConfigs{"report": {}},
+			wantError: `mysql instance "report" is empty`,
+		},
+		{
+			name:      "invalid instance config",
+			cfg:       MySQLConfigs{"report": {Mode: inframysql.ModeReadWrite, WriteDSNs: []string{testMySQLDSN("report")}}},
+			wantError: `mysql instance "report": mysql read_dsns is required in read_write mode`,
+		},
+		{
+			name: "multiple instances without default",
+			cfg: MySQLConfigs{
+				"report": testMySQLConfig("report"),
+				"audit":  testMySQLConfig("audit"),
+			},
+			wantError: "mysql default instance is required when multiple mysql instances are configured",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("validate error = %v, want %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func testMySQLConfig(database string) inframysql.Config {
+	return inframysql.Config{WriteDSNs: []string{testMySQLDSN(database)}}
+}
+
+func testMySQLDSN(database string) string {
+	return "user:pass@tcp(127.0.0.1:3306)/" + database + "?parseTime=true"
 }

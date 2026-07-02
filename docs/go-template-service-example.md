@@ -626,6 +626,20 @@ configs/infra/minio.yaml
 configs/service/payment.yaml
 ```
 
+`configs/infra/mysql.yaml` contains named MySQL instances. `default` is used by
+`ctx.Infra.MySQL()`, and explicit names are selected with
+`ctx.Infra.MySQL("report")`:
+
+```yaml
+default:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
+
+report:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+```
+
 When a key is missing and the same local file exists, the SDK writes it with
 `PutIfAbsent`. Existing etcd values are never overwritten. The loader only seeds
 the current service file, so `configs/service/user.yaml` is not uploaded by the

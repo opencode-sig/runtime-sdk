@@ -37,6 +37,14 @@ provider: etcd
 etcd:
   prefix: /runtime/registry
 `),
+		"configs/infra/mysql.yaml": []byte(`
+default:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
+report:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+`),
 		"configs/infra/elastic.yaml": []byte(`
 addresses:
   - http://127.0.0.1:9200
@@ -95,6 +103,12 @@ settings:
 	}
 	if len(cfg.Registry.Etcd.Endpoints) != 1 || cfg.Registry.Etcd.Endpoints[0] != "127.0.0.1:2379" {
 		t.Fatalf("registry endpoints = %v, want inherited runtime config endpoint", cfg.Registry.Etcd.Endpoints)
+	}
+	if len(cfg.Infra.MySQL) != 2 {
+		t.Fatalf("mysql instances = %d, want 2", len(cfg.Infra.MySQL))
+	}
+	if cfg.Infra.MySQL["report"].WriteDSNs[0] != "user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true" {
+		t.Fatalf("mysql report dsn = %v", cfg.Infra.MySQL["report"].WriteDSNs)
 	}
 	if cfg.Infra.Elastic.Addresses[0] != "http://127.0.0.1:9200" {
 		t.Fatalf("elastic addresses = %v", cfg.Infra.Elastic.Addresses)
@@ -235,6 +249,21 @@ func TestConventionConfigLoaderErrors(t *testing.T) {
 			},
 			service:   "payment",
 			wantError: "validate configs/infra/minio.yaml: minio endpoint is required",
+		},
+		{
+			name: "invalid mysql instance",
+			data: map[string][]byte{
+				"configs/runtime.yaml":         conventionRuntimeYAML("file"),
+				"configs/service/payment.yaml": []byte("grpc_addr: :9001\n"),
+				"configs/infra/mysql.yaml": []byte(`
+report:
+  mode: read_write
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/report?parseTime=true
+`),
+			},
+			service:   "payment",
+			wantError: `validate configs/infra/mysql.yaml: mysql instance "report": mysql read_dsns is required in read_write mode`,
 		},
 	}
 

@@ -36,7 +36,7 @@ type InfraContainer struct {
 	cfg InfraConfig
 
 	mu             sync.Mutex
-	mysql          *inframysql.DB
+	mysql          map[string]*inframysql.DB
 	redis          *infraredis.Client
 	kafkaProducer  *infrakafka.Producer
 	kafkaConsumers map[string]*infrakafka.Consumer
@@ -49,14 +49,19 @@ type InfraContainer struct {
 // NewInfraContainer creates an infra client container for one DataPlane generation.
 func NewInfraContainer(cfg InfraConfig) *InfraContainer {
 	return &InfraContainer{
+		mysql:          make(map[string]*inframysql.DB),
 		cfg:            cfg,
 		kafkaConsumers: make(map[string]*infrakafka.Consumer),
 	}
 }
 
-// MySQL returns the shared MySQL pools for this container.
+// MySQL returns the named MySQL pools for this container.
 func (c *InfraContainer) MySQL(name ...string) (*inframysql.DB, error) {
-	if err := ensureDefaultInfraName(name...); err != nil {
+	if c == nil {
+		return nil, fmt.Errorf("infra container is required")
+	}
+	instance, cfg, err := c.cfg.MySQL.Resolve(name...)
+	if err != nil {
 		return nil, err
 	}
 	c.mu.Lock()
@@ -64,14 +69,17 @@ func (c *InfraContainer) MySQL(name ...string) (*inframysql.DB, error) {
 	if err := c.ensureOpenLocked(); err != nil {
 		return nil, err
 	}
-	if c.mysql != nil {
-		return c.mysql, nil
+	if db := c.mysql[instance]; db != nil {
+		return db, nil
 	}
-	db, err := inframysql.NewDB(context.Background(), c.cfg.MySQL)
+	if c.mysql == nil {
+		c.mysql = make(map[string]*inframysql.DB)
+	}
+	db, err := inframysql.NewDB(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
-	c.mysql = db
+	c.mysql[instance] = db
 	return db, nil
 }
 
@@ -219,7 +227,10 @@ func (c *InfraContainer) Close() error {
 		return nil
 	}
 	c.closed = true
-	mysql := c.mysql
+	mysql := make([]*inframysql.DB, 0, len(c.mysql))
+	for _, db := range c.mysql {
+		mysql = append(mysql, db)
+	}
 	redisClient := c.redis
 	producer := c.kafkaProducer
 	consumers := make([]*infrakafka.Consumer, 0, len(c.kafkaConsumers))
@@ -232,8 +243,10 @@ func (c *InfraContainer) Close() error {
 	c.mu.Unlock()
 
 	var err error
-	if mysql != nil {
-		err = errors.Join(err, mysql.Close())
+	for _, db := range mysql {
+		if db != nil {
+			err = errors.Join(err, db.Close())
+		}
 	}
 	if redisClient != nil && redisClient.UniversalClient != nil {
 		err = errors.Join(err, redisClient.Close())

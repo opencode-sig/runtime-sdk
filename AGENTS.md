@@ -751,10 +751,11 @@ Init: func(ctx servicekit.RuntimeContext) error {
 
 约束：
 
-- 当前 `InfraContainer` 只支持默认实例名。传空、`default` 或不传名称均表示默认实例。
+- MySQL 支持命名实例。`ctx.Infra.MySQL()` 默认使用 `mysql.default`；`ctx.Infra.MySQL("report")` 使用 `mysql.report`。如果只配置了一个 MySQL 实例，未传名称时会自动使用该实例。
+- Redis、Kafka、etcd、Elasticsearch、MinIO 当前只支持默认实例名。传空、`default` 或不传名称均表示默认实例。
 - 不要把 infra client 放入 package-level global。
 - 不要跨 rebuild generation 复用旧 client。
-- 如果业务需要多个命名实例，应先扩展 `servicekit.InfraConfig` 和 `InfraContainer`，并补测试。
+- 如果其他 infra 也需要多个命名实例，应先扩展 `servicekit.InfraConfig` 和 `InfraContainer`，并补测试。
 
 示例 infra 配置片段：
 
@@ -766,9 +767,14 @@ infra:
       - 127.0.0.1:6379
     db: 0
   mysql:
-    mode: single
-    write_dsns:
-      - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
+    default:
+      mode: single
+      write_dsns:
+        - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
+    report:
+      mode: single
+      write_dsns:
+        - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
   kafka:
     brokers:
       - 127.0.0.1:9092

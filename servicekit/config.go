@@ -34,11 +34,80 @@ type Config struct {
 // passes them through; services decide which dependencies they actually use.
 type InfraConfig struct {
 	Etcd    infraetcd.Config    `json:"etcd" yaml:"etcd"`
-	MySQL   inframysql.Config   `json:"mysql" yaml:"mysql"`
+	MySQL   MySQLConfigs        `json:"mysql" yaml:"mysql"`
 	Redis   infraredis.Config   `json:"redis" yaml:"redis"`
 	Kafka   infrakafka.Config   `json:"kafka" yaml:"kafka"`
 	Elastic infraelastic.Config `json:"elastic" yaml:"elastic"`
 	MinIO   inframinio.Config   `json:"minio" yaml:"minio"`
+}
+
+const defaultMySQLInstance = "default"
+
+// MySQLConfigs contains named MySQL instance configurations. The default
+// instance is selected by MySQL() when no explicit name is supplied.
+type MySQLConfigs map[string]inframysql.Config
+
+// IsZero reports whether no MySQL instances are configured.
+func (c MySQLConfigs) IsZero() bool {
+	return len(c) == 0
+}
+
+// Resolve returns the effective MySQL instance name and config.
+func (c MySQLConfigs) Resolve(name ...string) (string, inframysql.Config, error) {
+	requested := defaultMySQLInstance
+	if len(name) > 0 && strings.TrimSpace(name[0]) != "" {
+		requested = strings.TrimSpace(name[0])
+	}
+	if len(c) == 0 {
+		if requested != defaultMySQLInstance {
+			return "", inframysql.Config{}, fmt.Errorf("mysql instance %q is not configured", requested)
+		}
+		return "", inframysql.Config{}, fmt.Errorf("mysql is not configured")
+	}
+	if cfg, ok := c[requested]; ok {
+		return requested, cfg, nil
+	}
+	if requested == defaultMySQLInstance && len(c) == 1 {
+		for instance, cfg := range c {
+			return instance, cfg, nil
+		}
+	}
+	return "", inframysql.Config{}, fmt.Errorf("mysql instance %q is not configured", requested)
+}
+
+// Validate checks all configured MySQL instances.
+func (c MySQLConfigs) Validate() error {
+	if len(c) == 0 {
+		return nil
+	}
+	seen := make(map[string]string, len(c))
+	hasDefault := false
+	for instance, cfg := range c {
+		normalized := strings.TrimSpace(instance)
+		if normalized == "" {
+			return fmt.Errorf("mysql instance name is required")
+		}
+		if normalized != instance {
+			return fmt.Errorf("mysql instance %q must not contain surrounding whitespace", instance)
+		}
+		if previous, ok := seen[normalized]; ok {
+			return fmt.Errorf("mysql instance %q conflicts with %q", instance, previous)
+		}
+		seen[normalized] = instance
+		if normalized == defaultMySQLInstance {
+			hasDefault = true
+		}
+		if cfg.IsZero() {
+			return fmt.Errorf("mysql instance %q is empty", instance)
+		}
+		if err := cfg.Validate(); err != nil {
+			return fmt.Errorf("mysql instance %q: %w", instance, err)
+		}
+	}
+	if len(c) > 1 && !hasDefault {
+		return fmt.Errorf("mysql default instance is required when multiple mysql instances are configured")
+	}
+	return nil
 }
 
 type RuntimeConfig struct {

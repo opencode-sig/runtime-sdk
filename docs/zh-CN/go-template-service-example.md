@@ -486,6 +486,19 @@ gRPC/HTTP listener 的绑定地址；实际监听仍由 `grpc_addr` 和 `http_ad
 显式配置 `advertise_grpc_addr` / `advertise_http_addr` 时仍然优先，不受
 `advertise_ip_cidrs` 限制。
 
+`configs/infra/mysql.yaml` 使用命名实例。`default` 由 `ctx.Infra.MySQL()` 使用，
+显式实例名通过 `ctx.Infra.MySQL("report")` 选择：
+
+```yaml
+default:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
+
+report:
+  write_dsns:
+    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+```
+
 使用 etcd 配置中心时，在 `configs/runtime.yaml` 中切换 provider：
 
 ```yaml
