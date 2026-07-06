@@ -5,12 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/opencode-sig/runtime-sdk/infra/internal/configutil"
 
 	_ "github.com/go-sql-driver/mysql"
 )
+
+const mysqlDriverName = "mysql"
+
+var openSQL = sql.Open
 
 // DB groups write and optional read pools for MySQL.
 type DB struct {
@@ -20,32 +25,42 @@ type DB struct {
 	nextRead uint64
 }
 
-// NewDB creates MySQL database/sql pools from config.
+// NewDB creates MySQL database/sql pools from structured config.
 //
-// The function intentionally returns *sql.DB based pools instead of GORM
+// The function intentionally returns *sql.DB based pools instead of ORM
 // instances. ORM selection and model naming strategies belong to upper layers.
-func NewDB(ctx context.Context, cfg Config) (*DB, error) {
-	if err := cfg.Validate(); err != nil {
+func NewDB(ctx context.Context, cfg Config, name ...string) (*DB, error) {
+	compiled, err := cfg.Compile()
+	if err != nil {
 		return nil, err
 	}
-	cfg = cfg.Normalize()
-	if len(cfg.WriteDSNs) == 0 {
-		return nil, fmt.Errorf("mysql write_dsns is required")
+	instance, err := compiled.Resolve(name...)
+	if err != nil {
+		return nil, err
+	}
+	return NewDBFromCompiled(ctx, instance)
+}
+
+// NewDBFromCompiled creates MySQL pools for one compiled instance.
+func NewDBFromCompiled(ctx context.Context, instance CompiledInstance) (*DB, error) {
+	if strings.TrimSpace(instance.WriteDSN) == "" {
+		return nil, fmt.Errorf("mysql instance %q write dsn is required", instance.Name)
+	}
+	if err := ensureDatabase(ctx, instance); err != nil {
+		return nil, err
 	}
 
 	db := &DB{}
 
-	for _, dsn := range cfg.WriteDSNs {
-		write, err := openDB(ctx, dsn, cfg.WritePool)
-		if err != nil {
-			_ = db.Close()
-			return nil, err
-		}
-		db.Writes = append(db.Writes, write)
+	write, err := openDB(ctx, instance.WriteDSN, instance.Pool)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
 	}
+	db.Writes = append(db.Writes, write)
 
-	for _, dsn := range cfg.ReadDSNs {
-		read, err := openDB(ctx, dsn, cfg.ReadPool)
+	for _, dsn := range instance.ReadDSNs {
+		read, err := openDB(ctx, dsn, instance.ReadPool)
 		if err != nil {
 			_ = db.Close()
 			return nil, err
@@ -57,11 +72,6 @@ func NewDB(ctx context.Context, cfg Config) (*DB, error) {
 }
 
 // Write returns the active write pool.
-//
-// Multiple write DSNs are initialized so callers can observe and manage all
-// pools, but this package intentionally does not round-robin writes. Write
-// failover has consistency implications and should be handled by MySQL proxy,
-// VIP, orchestration tooling or an upper runtime policy.
 func (db *DB) Write() *sql.DB {
 	if db == nil || len(db.Writes) == 0 {
 		return nil
@@ -125,7 +135,7 @@ func openDB(ctx context.Context, dsn string, pool PoolConfig) (*sql.DB, error) {
 		return nil, ctx.Err()
 	default:
 	}
-	db, err := sql.Open("mysql", dsn)
+	db, err := openSQL(mysqlDriverName, dsn)
 	if err != nil {
 		return nil, err
 	}

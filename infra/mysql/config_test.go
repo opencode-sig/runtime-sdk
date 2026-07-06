@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 )
@@ -13,114 +14,237 @@ func TestConfigValidateAllowsZeroConfig(t *testing.T) {
 	}
 }
 
-func TestConfigValidateAllowsZeroOptionalValues(t *testing.T) {
-	cfg := Config{
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
+func TestConfigCompileSingleServer(t *testing.T) {
+	cfg := testStructuredConfig()
+
+	compiled, err := cfg.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if len(compiled.Instances) != 2 {
+		t.Fatalf("instances = %d, want 2", len(compiled.Instances))
 	}
 
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("validate: %v", err)
+	defaultInstance, err := compiled.Resolve()
+	if err != nil {
+		t.Fatalf("resolve default: %v", err)
+	}
+	if defaultInstance.Name != "default" || defaultInstance.Database != "payment" {
+		t.Fatalf("default instance = %+v, want default/payment", defaultInstance)
+	}
+	if !strings.Contains(defaultInstance.WriteDSN, "/payment?") {
+		t.Fatalf("default write dsn = %q, want payment database", defaultInstance.WriteDSN)
+	}
+	if !strings.Contains(defaultInstance.WriteDSN, "parseTime=true") {
+		t.Fatalf("default write dsn = %q, want parseTime param", defaultInstance.WriteDSN)
+	}
+	if defaultInstance.Pool.MaxOpenConns != 10 {
+		t.Fatalf("default max open = %d, want global pool", defaultInstance.Pool.MaxOpenConns)
+	}
+
+	reportInstance, err := compiled.Resolve("report")
+	if err != nil {
+		t.Fatalf("resolve report: %v", err)
+	}
+	if reportInstance.Database != "payment_report" {
+		t.Fatalf("report database = %q, want payment_report", reportInstance.Database)
+	}
+	if reportInstance.Pool.MaxOpenConns != 20 {
+		t.Fatalf("report max open = %d, want database pool override", reportInstance.Pool.MaxOpenConns)
 	}
 }
 
-func TestConfigNormalizeDefaultsOptionalValues(t *testing.T) {
+func TestConfigCompileMultiServer(t *testing.T) {
 	cfg := Config{
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-	}
-
-	normalized := cfg.Normalize()
-	if normalized.Mode != ModeSingle {
-		t.Fatalf("mode = %q", normalized.Mode)
-	}
-	if normalized.WritePool.MaxOpenConns != 50 {
-		t.Fatalf("write max open conns = %d", normalized.WritePool.MaxOpenConns)
-	}
-	if normalized.WritePool.MaxIdleConns != 10 {
-		t.Fatalf("write max idle conns = %d", normalized.WritePool.MaxIdleConns)
-	}
-	if normalized.WritePool.ConnMaxLifetime != "1h" {
-		t.Fatalf("write conn max lifetime = %q", normalized.WritePool.ConnMaxLifetime)
-	}
-	if normalized.WritePool.ConnMaxIdleTime != "15m" {
-		t.Fatalf("write conn max idle time = %q", normalized.WritePool.ConnMaxIdleTime)
-	}
-	if normalized.ConnTimeout != "3s" {
-		t.Fatalf("conn timeout = %q", normalized.ConnTimeout)
-	}
-	if normalized.ReadTimeout != "3s" {
-		t.Fatalf("read timeout = %q", normalized.ReadTimeout)
-	}
-	if normalized.WriteTimeout != "3s" {
-		t.Fatalf("write timeout = %q", normalized.WriteTimeout)
-	}
-	if normalized.SlowQueryThreshold != "500ms" {
-		t.Fatalf("slow query threshold = %q", normalized.SlowQueryThreshold)
-	}
-}
-
-func TestConfigValidateRejectsUnsupportedMode(t *testing.T) {
-	cfg := Config{
-		Mode:      "proxy",
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-	}
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected unsupported mode error")
-	}
-}
-
-func TestConfigValidateRejectsReadWriteWithoutReadDSNs(t *testing.T) {
-	cfg := Config{
-		Mode:      ModeReadWrite,
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-	}
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected missing read DSNs error")
-	}
-}
-
-func TestConfigValidateRejectsNegativePoolValues(t *testing.T) {
-	cfg := Config{
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-		WritePool: PoolConfig{
-			MaxOpenConns: -1,
+		Servers: map[string]ServerConfig{
+			"main": {
+				Host:     "mysql-main",
+				Username: "app",
+				Password: "secret",
+				Databases: map[string]DatabaseConfig{
+					"default": {Name: "payment"},
+					"report":  {Name: "payment_report"},
+				},
+			},
+			"analytics": {
+				Host:     "mysql-analytics",
+				Username: "analytics",
+				Password: "secret",
+				Databases: map[string]DatabaseConfig{
+					"events": {Name: "analytics_events"},
+				},
+			},
 		},
 	}
 
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected negative pool value error")
+	compiled, err := cfg.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	mainReport, err := compiled.Resolve("main.report")
+	if err != nil {
+		t.Fatalf("resolve main.report: %v", err)
+	}
+	if mainReport.Name != "main.report" || mainReport.Server != "main" || mainReport.Database != "payment_report" {
+		t.Fatalf("main.report = %+v", mainReport)
+	}
+
+	events, err := compiled.Resolve("events")
+	if err != nil {
+		t.Fatalf("resolve unique alias events: %v", err)
+	}
+	if events.Name != "analytics.events" {
+		t.Fatalf("events alias resolved to %q, want analytics.events", events.Name)
 	}
 }
 
-func TestConfigValidateRejectsMaxIdleGreaterThanMaxOpen(t *testing.T) {
+func TestConfigCompileAmbiguousAlias(t *testing.T) {
 	cfg := Config{
-		WriteDSNs: []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-		WritePool: PoolConfig{
-			MaxOpenConns: 5,
-			MaxIdleConns: 6,
+		Servers: map[string]ServerConfig{
+			"main": {
+				Host:     "mysql-main",
+				Username: "app",
+				Databases: map[string]DatabaseConfig{
+					"report": {Name: "payment_report"},
+				},
+			},
+			"analytics": {
+				Host:     "mysql-analytics",
+				Username: "analytics",
+				Databases: map[string]DatabaseConfig{
+					"report": {Name: "analytics_report"},
+				},
+			},
 		},
 	}
 
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected max idle greater than max open error")
+	compiled, err := cfg.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := compiled.Resolve("report"); err == nil || !strings.Contains(err.Error(), `mysql instance "report" is ambiguous`) {
+		t.Fatalf("resolve ambiguous error = %v", err)
 	}
 }
 
-func TestConfigValidateRejectsInvalidDuration(t *testing.T) {
+func TestConfigCompileReadEndpoints(t *testing.T) {
 	cfg := Config{
-		WriteDSNs:   []string{"user:pass@tcp(127.0.0.1:3306)/app?parseTime=true"},
-		ConnTimeout: "bad",
+		Write: EndpointConfig{
+			Host:     "mysql-primary",
+			Username: "app",
+		},
+		Reads: []EndpointConfig{
+			{Host: "mysql-replica-1", Username: "app_ro"},
+			{Host: "mysql-replica-2", Username: "app_ro"},
+		},
+		Databases: map[string]DatabaseConfig{
+			"default": {Name: "payment"},
+		},
 	}
 
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected invalid duration error")
+	compiled, err := cfg.Compile()
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	instance, err := compiled.Resolve()
+	if err != nil {
+		t.Fatalf("resolve default: %v", err)
+	}
+	if len(instance.ReadDSNs) != 2 {
+		t.Fatalf("read dsns = %d, want 2", len(instance.ReadDSNs))
+	}
+	if !strings.Contains(instance.ReadDSNs[0], "mysql-replica-1") {
+		t.Fatalf("read dsn 0 = %q", instance.ReadDSNs[0])
+	}
+}
+
+func TestConfigValidateErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       Config
+		wantError string
+	}{
+		{
+			name: "mix servers and single server fields",
+			cfg: Config{
+				Host: "127.0.0.1",
+				Servers: map[string]ServerConfig{
+					"main": {Host: "mysql-main", Username: "app", Databases: map[string]DatabaseConfig{"default": {}}},
+				},
+			},
+			wantError: "mysql cannot mix servers",
+		},
+		{
+			name: "missing username",
+			cfg: Config{
+				Host:      "127.0.0.1",
+				Databases: map[string]DatabaseConfig{"default": {Name: "payment"}},
+			},
+			wantError: "mysql.write.username is required",
+		},
+		{
+			name: "server name contains dot",
+			cfg: Config{
+				Servers: map[string]ServerConfig{
+					"main.primary": {Host: "mysql-main", Username: "app", Databases: map[string]DatabaseConfig{"default": {}}},
+				},
+			},
+			wantError: `mysql server name "main.primary" must not contain "."`,
+		},
+		{
+			name: "database name contains dot",
+			cfg: Config{
+				Host:     "127.0.0.1",
+				Username: "app",
+				Databases: map[string]DatabaseConfig{
+					"main.default": {Name: "payment"},
+				},
+			},
+			wantError: `mysql.databases name "main.default" must not contain "."`,
+		},
+		{
+			name: "ensure invalid identifier",
+			cfg: Config{
+				Host:     "127.0.0.1",
+				Username: "app",
+				Databases: map[string]DatabaseConfig{
+					"default": {
+						Name:   "payment-report",
+						Ensure: EnsureDatabaseConfig{Enabled: true},
+					},
+				},
+			},
+			wantError: `mysql.databases.default.name: identifier "payment-report" contains unsupported character '-'`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("validate error = %v, want %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestIdentifierQuote(t *testing.T) {
+	quoted, err := quoteIdentifier("payment_2026")
+	if err != nil {
+		t.Fatalf("quote identifier: %v", err)
+	}
+	if quoted != "`payment_2026`" {
+		t.Fatalf("quoted = %q", quoted)
+	}
+	if _, err := quoteIdentifier("payment-report"); err == nil {
+		t.Fatal("expected invalid identifier error")
 	}
 }
 
 func TestNewDBRejectsZeroConfig(t *testing.T) {
 	if _, err := NewDB(context.Background(), Config{}); err == nil {
-		t.Fatal("expected missing write DSNs error")
+		t.Fatal("expected missing mysql config error")
 	}
 }
 
@@ -179,4 +303,28 @@ func TestApplyPool(t *testing.T) {
 		t.Fatalf("max open = %d", stats.MaxOpenConnections)
 	}
 	db.SetConnMaxLifetime(30 * time.Minute)
+}
+
+func testStructuredConfig() Config {
+	return Config{
+		Host:     "127.0.0.1",
+		Port:     3306,
+		Username: "payment",
+		Password: "secret",
+		Params: map[string]string{
+			"parseTime": "true",
+			"charset":   "utf8mb4",
+		},
+		Pool: PoolConfig{MaxOpenConns: 10},
+		Databases: map[string]DatabaseConfig{
+			"default": {Name: "payment"},
+			"report": {
+				Name: "payment_report",
+				Params: map[string]string{
+					"loc": "Local",
+				},
+				Pool: PoolConfig{MaxOpenConns: 20},
+			},
+		},
+	}
 }

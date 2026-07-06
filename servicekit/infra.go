@@ -37,6 +37,7 @@ type InfraContainer struct {
 
 	mu             sync.Mutex
 	mysql          map[string]*inframysql.DB
+	mysqlConfig    *inframysql.CompiledConfig
 	redis          *infraredis.Client
 	kafkaProducer  *infrakafka.Producer
 	kafkaConsumers map[string]*infrakafka.Consumer
@@ -60,26 +61,41 @@ func (c *InfraContainer) MySQL(name ...string) (*inframysql.DB, error) {
 	if c == nil {
 		return nil, fmt.Errorf("infra container is required")
 	}
-	instance, cfg, err := c.cfg.MySQL.Resolve(name...)
+	c.mu.Lock()
+	if err := c.ensureOpenLocked(); err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	instance, err := c.mysqlInstanceLocked(name...)
+	if err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	if db := c.mysql[instance.Name]; db != nil {
+		c.mu.Unlock()
+		return db, nil
+	}
+	c.mu.Unlock()
+
+	db, err := inframysql.NewDBFromCompiled(context.Background(), instance)
 	if err != nil {
 		return nil, err
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.ensureOpenLocked(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
-	if db := c.mysql[instance]; db != nil {
-		return db, nil
+	if existing := c.mysql[instance.Name]; existing != nil {
+		_ = db.Close()
+		return existing, nil
 	}
 	if c.mysql == nil {
 		c.mysql = make(map[string]*inframysql.DB)
 	}
-	db, err := inframysql.NewDB(context.Background(), cfg)
-	if err != nil {
-		return nil, err
-	}
-	c.mysql[instance] = db
+	c.mysql[instance.Name] = db
 	return db, nil
 }
 
@@ -279,6 +295,17 @@ func (c *InfraContainer) ensureOpenLocked() error {
 		return fmt.Errorf("infra container is closed")
 	}
 	return nil
+}
+
+func (c *InfraContainer) mysqlInstanceLocked(name ...string) (inframysql.CompiledInstance, error) {
+	if c.mysqlConfig == nil {
+		compiled, err := c.cfg.MySQL.Compile()
+		if err != nil {
+			return inframysql.CompiledInstance{}, err
+		}
+		c.mysqlConfig = &compiled
+	}
+	return c.mysqlConfig.Resolve(name...)
 }
 
 func ensureDefaultInfraName(name ...string) error {

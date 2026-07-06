@@ -38,12 +38,17 @@ etcd:
   prefix: /runtime/registry
 `),
 		"configs/infra/mysql.yaml": []byte(`
-default:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
-report:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+host: 127.0.0.1
+port: 3306
+username: payment
+password: secret
+params:
+  parseTime: "true"
+databases:
+  default:
+    name: payment
+  report:
+    name: payment_report
 `),
 		"configs/infra/elastic.yaml": []byte(`
 addresses:
@@ -104,11 +109,11 @@ settings:
 	if len(cfg.Registry.Etcd.Endpoints) != 1 || cfg.Registry.Etcd.Endpoints[0] != "127.0.0.1:2379" {
 		t.Fatalf("registry endpoints = %v, want inherited runtime config endpoint", cfg.Registry.Etcd.Endpoints)
 	}
-	if len(cfg.Infra.MySQL) != 2 {
-		t.Fatalf("mysql instances = %d, want 2", len(cfg.Infra.MySQL))
+	if len(cfg.Infra.MySQL.Databases) != 2 {
+		t.Fatalf("mysql databases = %d, want 2", len(cfg.Infra.MySQL.Databases))
 	}
-	if cfg.Infra.MySQL["report"].WriteDSNs[0] != "user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true" {
-		t.Fatalf("mysql report dsn = %v", cfg.Infra.MySQL["report"].WriteDSNs)
+	if cfg.Infra.MySQL.Databases["report"].Name != "payment_report" {
+		t.Fatalf("mysql report database = %q", cfg.Infra.MySQL.Databases["report"].Name)
 	}
 	if cfg.Infra.Elastic.Addresses[0] != "http://127.0.0.1:9200" {
 		t.Fatalf("elastic addresses = %v", cfg.Infra.Elastic.Addresses)
@@ -251,19 +256,19 @@ func TestConventionConfigLoaderErrors(t *testing.T) {
 			wantError: "validate configs/infra/minio.yaml: minio endpoint is required",
 		},
 		{
-			name: "invalid mysql instance",
+			name: "invalid mysql config",
 			data: map[string][]byte{
 				"configs/runtime.yaml":         conventionRuntimeYAML("file"),
 				"configs/service/payment.yaml": []byte("grpc_addr: :9001\n"),
 				"configs/infra/mysql.yaml": []byte(`
-report:
-  mode: read_write
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/report?parseTime=true
+host: 127.0.0.1
+databases:
+  default:
+    name: payment
 `),
 			},
 			service:   "payment",
-			wantError: `validate configs/infra/mysql.yaml: mysql instance "report": mysql read_dsns is required in read_write mode`,
+			wantError: `validate configs/infra/mysql.yaml: mysql.write.username is required`,
 		},
 	}
 

@@ -626,19 +626,35 @@ configs/infra/minio.yaml
 configs/service/payment.yaml
 ```
 
-`configs/infra/mysql.yaml` contains named MySQL instances. `default` is used by
-`ctx.Infra.MySQL()`, and explicit names are selected with
-`ctx.Infra.MySQL("report")`:
+`configs/infra/mysql.yaml` uses structured MySQL server and database fields.
+`default` is used by `ctx.Infra.MySQL()`, explicit names are selected with
+`ctx.Infra.MySQL("report")`, and multi-server deployments can use qualified
+names such as `ctx.Infra.MySQL("main.report")`:
 
 ```yaml
-default:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
-
-report:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+servers:
+  main:
+    host: 127.0.0.1
+    port: 3306
+    username: payment
+    password: secret
+    params:
+      parseTime: "true"
+      charset: utf8mb4
+    databases:
+      default:
+        name: payment
+        ensure:
+          enabled: true
+          charset: utf8mb4
+          collation: utf8mb4_unicode_ci
+      report:
+        name: payment_report
 ```
+
+When `ensure.enabled` is true, the SDK creates the database if it is missing
+before opening the connection pool. It does not create tables, run migrations,
+or manage MySQL users.
 
 When a key is missing and the same local file exists, the SDK writes it with
 `PutIfAbsent`. Existing etcd values are never overwritten. The loader only seeds

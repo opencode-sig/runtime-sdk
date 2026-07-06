@@ -279,7 +279,7 @@ SDK 默认保持 tracing 边界和上下文传播可用，但不强制外部 col
 可选基础设施 client 配置和构造能力：
 
 - `infra/etcd`：etcd client、`NewClientAndWait`、`WaitReady`。
-- `infra/mysql`：write/read pools、single/read_write mode、`Ping`、`Close`。
+- `infra/mysql`：结构化 servers/databases 配置、write/read pools、可选 ensure database、`Ping`、`Close`。
 - `infra/redis`：single/sentinel/cluster、TLS、`Ping`。
 - `infra/kafka`：producer、consumer、topic policy、TLS/SASL、connectivity `Check`。
 - `infra/elastic`：Elasticsearch client、basic/API key auth、TLS、`Ping`。
@@ -751,7 +751,9 @@ Init: func(ctx servicekit.RuntimeContext) error {
 
 约束：
 
-- MySQL 支持命名实例。`ctx.Infra.MySQL()` 默认使用 `mysql.default`；`ctx.Infra.MySQL("report")` 使用 `mysql.report`。如果只配置了一个 MySQL 实例，未传名称时会自动使用该实例。
+- MySQL 使用结构化 `servers/databases` 配置。`ctx.Infra.MySQL()` 默认使用 `default` database；`ctx.Infra.MySQL("report")` 使用同名 database；多 server 时可用 `ctx.Infra.MySQL("main.report")`。如果只配置了一个 database，未传名称时会自动使用该实例。
+- MySQL 不再暴露 DSN 配置；SDK 内部根据 host、port、username、password、params 和 database name 生成 driver DSN。
+- MySQL 的 `ensure.enabled=true` 只会在创建连接池前按需创建 database，不会创建表、执行 migration 或修改用户权限。
 - Redis、Kafka、etcd、Elasticsearch、MinIO 当前只支持默认实例名。传空、`default` 或不传名称均表示默认实例。
 - 不要把 infra client 放入 package-level global。
 - 不要跨 rebuild generation 复用旧 client。
@@ -767,14 +769,24 @@ infra:
       - 127.0.0.1:6379
     db: 0
   mysql:
-    default:
-      mode: single
-      write_dsns:
-        - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
-    report:
-      mode: single
-      write_dsns:
-        - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+    servers:
+      main:
+        host: 127.0.0.1
+        port: 3306
+        username: payment
+        password: secret
+        params:
+          parseTime: "true"
+          charset: utf8mb4
+        databases:
+          default:
+            name: payment
+            ensure:
+              enabled: true
+              charset: utf8mb4
+              collation: utf8mb4_unicode_ci
+          report:
+            name: payment_report
   kafka:
     brokers:
       - 127.0.0.1:9092

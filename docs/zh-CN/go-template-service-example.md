@@ -486,18 +486,34 @@ gRPC/HTTP listener 的绑定地址；实际监听仍由 `grpc_addr` 和 `http_ad
 显式配置 `advertise_grpc_addr` / `advertise_http_addr` 时仍然优先，不受
 `advertise_ip_cidrs` 限制。
 
-`configs/infra/mysql.yaml` 使用命名实例。`default` 由 `ctx.Infra.MySQL()` 使用，
-显式实例名通过 `ctx.Infra.MySQL("report")` 选择：
+`configs/infra/mysql.yaml` 使用结构化 MySQL server 和 database 配置。
+`default` 由 `ctx.Infra.MySQL()` 使用，显式实例名通过
+`ctx.Infra.MySQL("report")` 选择，多 server 场景可以使用
+`ctx.Infra.MySQL("main.report")`：
 
 ```yaml
-default:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment?parseTime=true
-
-report:
-  write_dsns:
-    - user:pass@tcp(127.0.0.1:3306)/payment_report?parseTime=true
+servers:
+  main:
+    host: 127.0.0.1
+    port: 3306
+    username: payment
+    password: secret
+    params:
+      parseTime: "true"
+      charset: utf8mb4
+    databases:
+      default:
+        name: payment
+        ensure:
+          enabled: true
+          charset: utf8mb4
+          collation: utf8mb4_unicode_ci
+      report:
+        name: payment_report
 ```
+
+`ensure.enabled=true` 时，SDK 会在创建连接池前按需创建 database；它不会创建表、
+执行 migration 或管理 MySQL 用户。
 
 使用 etcd 配置中心时，在 `configs/runtime.yaml` 中切换 provider：
 

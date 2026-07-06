@@ -6,15 +6,13 @@ import (
 
 	infraelastic "github.com/opencode-sig/runtime-sdk/infra/elastic"
 	inframinio "github.com/opencode-sig/runtime-sdk/infra/minio"
+	inframysql "github.com/opencode-sig/runtime-sdk/infra/mysql"
 	infraredis "github.com/opencode-sig/runtime-sdk/infra/redis"
 )
 
 func TestInfraContainerReusesLazyClients(t *testing.T) {
 	container := NewInfraContainer(InfraConfig{
-		MySQL: MySQLConfigs{
-			"default": testMySQLConfig("app"),
-			"report":  testMySQLConfig("report"),
-		},
+		MySQL:   testMySQLConfig(),
 		Redis:   testRedisConfig(),
 		Elastic: testElasticConfig(),
 		MinIO:   testMinIOConfig(),
@@ -106,7 +104,7 @@ func TestInfraContainerRejectsNamedInstanceWithoutConfig(t *testing.T) {
 
 func TestInfraContainerClosePreventsNewClients(t *testing.T) {
 	container := NewInfraContainer(InfraConfig{
-		MySQL: MySQLConfigs{"default": testMySQLConfig("app")},
+		MySQL: testMySQLConfig(),
 		Redis: testRedisConfig(),
 	})
 	if err := container.Close(); err != nil {
@@ -122,7 +120,18 @@ func TestInfraContainerClosePreventsNewClients(t *testing.T) {
 
 func TestInfraContainerMySQLUsesSingleConfiguredInstanceAsDefault(t *testing.T) {
 	container := NewInfraContainer(InfraConfig{
-		MySQL: MySQLConfigs{"analytics": testMySQLConfig("analytics")},
+		MySQL: inframysql.Config{
+			Host:     "127.0.0.1",
+			Port:     3306,
+			Username: "user",
+			Password: "pass",
+			Params: map[string]string{
+				"parseTime": "true",
+			},
+			Databases: map[string]inframysql.DatabaseConfig{
+				"analytics": {Name: "analytics"},
+			},
+		},
 	})
 	defer func() {
 		if err := container.Close(); err != nil {
@@ -145,6 +154,22 @@ func TestInfraContainerMySQLUsesSingleConfiguredInstanceAsDefault(t *testing.T) 
 
 func testRedisConfig() infraredis.Config {
 	return infraredis.Config{Addrs: []string{"127.0.0.1:6379"}}
+}
+
+func testMySQLConfig() inframysql.Config {
+	return inframysql.Config{
+		Host:     "127.0.0.1",
+		Port:     3306,
+		Username: "user",
+		Password: "pass",
+		Params: map[string]string{
+			"parseTime": "true",
+		},
+		Databases: map[string]inframysql.DatabaseConfig{
+			"default": {Name: "app"},
+			"report":  {Name: "report"},
+		},
+	}
 }
 
 func testElasticConfig() infraelastic.Config {

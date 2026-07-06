@@ -1,2 +1,3 @@
-// Package mysql provides MySQL database/sql pool configuration and constructors.
+// Package mysql provides structured MySQL server/database configuration and
+// database/sql pool constructors.
 package mysql
