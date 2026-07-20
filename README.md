@@ -116,6 +116,12 @@ and `user_id` from context values or gRPC metadata. `instance_id` is reserved
 for the current log producer; use `target_instance_id` when recording an
 operation that targets another instance.
 
+Logging helpers can preserve those context fields while reporting their real
+call site with `DebugSkip`, `InfoSkip`, `WarnSkip`, or `ErrorSkip`. The skip is
+additional to the SDK's own caller handling, so a one-layer helper typically
+uses `logger.InfoSkip(ctx, 1, msg, fields...)`. `WithCallerSkip` can apply the
+same additional offset to a reusable child logger.
+
 Custom DataPlane owners such as Gateways should use `servicekit.NewGeneration`
 to create `data_plane_generation` values, then keep their own lifecycle
 assembly. The generation contract is shared runtime identity; it does not force

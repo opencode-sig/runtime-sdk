@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.1 - 2026-07-20
+
+- Added context-aware `DebugSkip`, `InfoSkip`, `WarnSkip`, and `ErrorSkip`
+  logger APIs for reporting the real business call site through helper layers
+  without losing request, client IP, trace/span, service, module, or other
+  structured fields. Added `WithCallerSkip` for reusable child loggers.
+
 ## v0.7.7 - 2026-06-17
 
 - Added `service.advertise_ip_cidrs` so managed services on multi-homed hosts

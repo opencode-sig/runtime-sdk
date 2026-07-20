@@ -71,6 +71,16 @@ func (l *Logger) Named(name string) *Logger {
 	return &Logger{base: l.Zap().Named(name)}
 }
 
+// WithCallerSkip returns a child logger that skips additional caller frames.
+// Non-positive values leave caller behavior unchanged.
+func (l *Logger) WithCallerSkip(skip int) *Logger {
+	base := l.Zap()
+	if skip > 0 {
+		base = base.WithOptions(zap.AddCallerSkip(skip))
+	}
+	return &Logger{base: base}
+}
+
 // Sync flushes buffered log entries.
 func (l *Logger) Sync() error {
 	return l.Zap().Sync()
@@ -81,9 +91,19 @@ func (l *Logger) Debug(ctx context.Context, msg string, fields ...zap.Field) {
 	l.log(ctx, zapcore.DebugLevel, msg, fields...)
 }
 
+// DebugSkip logs a debug message while skipping additional caller frames.
+func (l *Logger) DebugSkip(ctx context.Context, skip int, msg string, fields ...zap.Field) {
+	l.logWithCallerSkip(ctx, zapcore.DebugLevel, skip, msg, fields...)
+}
+
 // Info logs an info message with context correlation fields.
 func (l *Logger) Info(ctx context.Context, msg string, fields ...zap.Field) {
 	l.log(ctx, zapcore.InfoLevel, msg, fields...)
+}
+
+// InfoSkip logs an info message while skipping additional caller frames.
+func (l *Logger) InfoSkip(ctx context.Context, skip int, msg string, fields ...zap.Field) {
+	l.logWithCallerSkip(ctx, zapcore.InfoLevel, skip, msg, fields...)
 }
 
 // Warn logs a warning message with context correlation fields.
@@ -91,9 +111,19 @@ func (l *Logger) Warn(ctx context.Context, msg string, fields ...zap.Field) {
 	l.log(ctx, zapcore.WarnLevel, msg, fields...)
 }
 
+// WarnSkip logs a warning message while skipping additional caller frames.
+func (l *Logger) WarnSkip(ctx context.Context, skip int, msg string, fields ...zap.Field) {
+	l.logWithCallerSkip(ctx, zapcore.WarnLevel, skip, msg, fields...)
+}
+
 // Error logs an error message with context correlation fields.
 func (l *Logger) Error(ctx context.Context, msg string, fields ...zap.Field) {
 	l.log(ctx, zapcore.ErrorLevel, msg, fields...)
+}
+
+// ErrorSkip logs an error message while skipping additional caller frames.
+func (l *Logger) ErrorSkip(ctx context.Context, skip int, msg string, fields ...zap.Field) {
+	l.logWithCallerSkip(ctx, zapcore.ErrorLevel, skip, msg, fields...)
 }
 
 // DPanic logs a development panic message with context correlation fields.
@@ -113,6 +143,16 @@ func (l *Logger) Fatal(ctx context.Context, msg string, fields ...zap.Field) {
 
 func (l *Logger) log(ctx context.Context, level zapcore.Level, msg string, fields ...zap.Field) {
 	base := l.Zap()
+	if checked := base.Check(level, msg); checked != nil {
+		checked.Write(appendContextFields(ctx, fields)...)
+	}
+}
+
+func (l *Logger) logWithCallerSkip(ctx context.Context, level zapcore.Level, skip int, msg string, fields ...zap.Field) {
+	base := l.Zap()
+	if skip > 0 {
+		base = base.WithOptions(zap.AddCallerSkip(skip))
+	}
 	if checked := base.Check(level, msg); checked != nil {
 		checked.Write(appendContextFields(ctx, fields)...)
 	}
